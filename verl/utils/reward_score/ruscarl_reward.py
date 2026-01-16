@@ -55,7 +55,7 @@ class AsyncVLLMSampler:
         self,
         base_url: str | None = None,
         model: str | None = None,
-        timeout: int = 120,
+        timeout: int = 1800,
         filter_think_tags: bool = True,
     ):
         url_env = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
@@ -102,7 +102,7 @@ class AsyncVLLMSampler:
         payload = {
             "model": self.model,
             "messages": message_list,
-            "temperature": 0.2,
+            "temperature": 1.0,
             "top_k": 20,
             "top_p": 0.8,
             "max_tokens": 32768
