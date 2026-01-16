@@ -339,15 +339,14 @@ async def compute_score(
             return 0.0
 
         rubrics = rm_data.get("rubrics", []) or rm_data.get("Rubric", [])
-        
-        if not rubrics:
-            return 0.0
+        assert rubrics, "[grader debug] missing rubrics"
             
         rubric_items = [RubricItem.from_dict(r) for r in rubrics]
         grader = get_global_grader()
         
         # Ensure prompt is available (fetch from kwargs if not passed positionally)
         input_prompt = prompt if prompt is not None else kwargs.get("prompt", [])
+        assert input_prompt, "[grader debug] missing prompt"
         
         score = await async_grade_single_example(
             input_prompt, 
