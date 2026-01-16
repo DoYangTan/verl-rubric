@@ -4,7 +4,6 @@ from huggingface_hub import snapshot_download
 
 # Model configuration
 model_id = "Qwen/Qwen2.5-7B-Instruct"
-
 local_dir = "ruscarl/model/Qwen/Qwen2.5-7B-Instruct"
 
 print(f"Downloading {model_id} to {local_dir}...")

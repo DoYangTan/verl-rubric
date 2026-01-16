@@ -1,6 +1,6 @@
-# RuscaRL: Rubric-based RL with Asynchronous Inference on VeRL
+# verl-Rubric: Rubric-based RL with Asynchronous Grader Scoring on verl
 
-This repository contains the implementation of **RuscaRL** based on `verl` (v0.7). It utilizes the `RewardLoop` for efficient training and features **asynchronous accelerated inference** for the reward process.
+This repository contains the implementation of **Rubric-based RL** based on `verl` (v0.7). It utilizes the `RewardLoop` for efficient training and performs asynchronous rubric-based reward grading through an external vLLM grader.
 
 > **Note:** All commands below must be executed from the **root directory** of the `verl-rubric` project.
 
@@ -44,7 +44,7 @@ python ruscarl/script/download_gpt-oss-20b_model.py
 
 ## 3. Deploy Reward Model Service
 
-RuscaRL uses an external VLLM service for reward calculation. You need to start the VLLM API server before starting the training loop.
+RuscaRL uses an external vLLM service for reward calculation. You need to start the vLLM API server before starting the training loop.
 
 **Run the following command in a separate terminal or using `nohup`:**
 
@@ -63,7 +63,7 @@ python -m vllm.entrypoints.openai.api_server \
 
 ## 4. Run RuscaRL Training
 
-Once the data is ready and the VLLM service is running on port 8000, start the main training script:
+Once the data is ready and the vLLM service is running on port 8000, start the main training script:
 
 ```bash
 bash examples/ruscarl_trainer/healthbench_RuscaRL.sh
