@@ -165,8 +165,24 @@ def _build_batch_grader_prompt(prompt: List[Dict[str, str]], response: str, rubr
     rubrics_str = "\n".join(f"{idx + 1}. (points: {item.points}) {item.criterion}" for idx, item in enumerate(rubric_items))
     
     return f'''You are an expert evaluator. Given a user prompt, a generated response, and a list of quality rubrics, please evaluate the response against EACH rubric.
+
+For each rubric,
+- Mark "PRESENT" if the criterion is satisfied, or "NOT_PRESENT" if it is not. For example, given the response "Apples are red", the rubric "Mentions apples" is PRESENT, "Does not mention strawberries" is also PRESENT since the response doesn't mention strawberries and "Mentions oranges" is NOT_PRESENT. Also, "Avoids mentioning strawberries" is PRESENT because the response doesn't mention strawberries. However, "Avoids mentioning apples" is NOT_PRESENT because the response mentions apples.
+- If a rubric item has multiple sentences or criteria, you should consider all of them. If any of the criteria is not met, the answer should be NOT PRESENT. Only return PRESENT if all of the criteria are met.
+- One important exception to the above bullet point is that if a rubric says "such as", "for example", or "including", the response does not have to include all of the examples listed to meet the criteria. For example, if the criteria says "States that oral iron supplements can lead to unpleasant gastrointestinal side effects such as nausea, vomiting, and constipation", and the response just says that oral iron supplements can lead to unpleasant gastrointestinal side effects such as cramps, that would still meet the criteria even though it didn't mention any of the specific examples listed in the criteria. That is, there are no partial credit for any of the criteria.
+
 Start your response with a valid JSON object that starts with "```json" and ends with "```".
-The keys must be the numbers of the rubrics provided and the values must be either "PRESENT" or "NOT_PRESENT".
+
+The keys must be the numbers of the rubrics provided and the values must be either "PRESENT" or "NOT_PRESENT" based on your evaluation. Ensure the JSON is valid and contains no extra text or explanations.
+
+Example response:
+```json
+{{
+ "1": "PRESENT",
+ "2": "NOT_PRESENT",
+ "3": "PRESENT"
+}}
+```
 
 <Prompt>
 {prompt_str}
@@ -184,18 +200,8 @@ def _parse_presence_response(resp_text: str, expected_count: int) -> Dict[int, b
     """Parse JSON response with robust extraction"""
     if not isinstance(resp_text, str) or resp_text == "{}":
         return {}
-        
-    # Extract JSON block
-    match = re.search(r'\{.*\}', resp_text, re.DOTALL)
-    if not match:
-        return {}
-    
-    cleaned = match.group(0).strip()
-    # Fix common format errors
-    cleaned = re.sub(r",\s*}", "}", cleaned)
-    
-    try:
-        data = json.loads(cleaned)
+
+    def _coerce_results(data: dict) -> Dict[int, bool]:
         results = {}
         for key, val in data.items():
             try:
@@ -209,7 +215,41 @@ def _parse_presence_response(resp_text: str, expected_count: int) -> Dict[int, b
             except (ValueError, TypeError):
                 continue
         return results
+
+    def _validate_count(results: Dict[int, bool]) -> bool:
+        if expected_count and len(results) != expected_count:
+            print(f"[grader debug] parsed count mismatch: expected={expected_count}, got={len(results)}")
+            print(resp_text)
+            return False
+        return True
+
+    # Prefer fenced JSON block first.
+    match = re.search(r"```json\s*(\{.*?\})\s*```", resp_text, re.DOTALL | re.IGNORECASE)
+    if match:
+        try:
+            data = json.loads(match.group(1))
+            results = _coerce_results(data)
+            return results if _validate_count(results) else {}
+        except Exception:
+            print("[grader debug] failed to parse fenced json block")
+            print(resp_text)
+            pass
+
+    # Fallback to any JSON-like object in the text.
+    match = re.search(r"\{.*\}", resp_text, re.DOTALL)
+    if not match:
+        return {}
+
+    cleaned = match.group(0).strip()
+    cleaned = re.sub(r",\s*}", "}", cleaned)
+
+    try:
+        data = json.loads(cleaned)
+        results = _coerce_results(data)
+        return results if _validate_count(results) else {}
     except Exception:
+        print("[grader debug] failed to parse json object fallback")
+        print(resp_text)
         return {}
 
 def calculate_score(rubric_items: List[RubricItem], grading_response_list: List[dict]) -> float:
