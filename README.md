@@ -2,7 +2,7 @@
 
 This repository contains the implementation of **RuscaRL** based on `verl` (v0.7). It utilizes the `RewardLoop` for efficient training and features **asynchronous accelerated inference** for the reward process.
 
-> **Note:** All commands below must be executed from the **root directory** of the `verl-ruscarl` project.
+> **Note:** All commands below must be executed from the **root directory** of the `verl-rubric` project.
 
 <img src="fig\Fig1.png" width="50%"><img src="fig\Fig2.png" width="50%">
 
