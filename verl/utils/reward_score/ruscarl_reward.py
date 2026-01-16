@@ -103,8 +103,6 @@ class AsyncVLLMSampler:
             "model": self.model,
             "messages": message_list,
             "temperature": 1.0,
-            "top_k": 20,
-            "top_p": 0.8,
             "max_tokens": 32768
         }
 
