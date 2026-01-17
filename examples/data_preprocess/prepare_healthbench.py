@@ -86,7 +86,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--local_dir', default='ruscarl/raw_data/healthbench')
-    parser.add_argument('--output_dir', default='ruscarl/data/health_bench')
+    parser.add_argument('--output_dir', default='data/health_bench')
     parser.add_argument('--hdfs_dir', default=None)
     
     args = parser.parse_args()

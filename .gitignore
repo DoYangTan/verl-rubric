@@ -8,6 +8,28 @@
 **/playground
 **/wandb
 
+# 忽略模型权重
+model_weight/
+*.pth
+*.bin
+*.safetensors
+
+# 忽略数据集
+data/
+*.parquet
+
+# 忽略日志和缓存
+log/
+__pycache__/
+*.pyc
+
+# 忽略 wandb 目录
+wandb/
+
+# 忽略 IDE 配置文件
+.idea/
+.vscode/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
