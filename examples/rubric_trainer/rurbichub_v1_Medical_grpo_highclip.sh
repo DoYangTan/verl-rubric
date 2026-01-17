@@ -14,7 +14,7 @@ EXP_NAME="rubrichub_v1_Medical_Qwen2.5-3B-Instruct_GRPO_highclip"
 PROJECT_NAME="rubrichub_v1_Medical"
 MODEL_PATH="model_weight/Qwen/Qwen2.5-3B-Instruct"
 
-max_prompt_length=512
+max_prompt_length=4096
 max_response_length=4096
 use_dynamic_bsz=True
 max_tokens=$((max_prompt_length + max_response_length))
