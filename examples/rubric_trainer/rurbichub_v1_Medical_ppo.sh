@@ -22,8 +22,8 @@ actor_ppo_max_token_len=$((max_tokens * 1))
 infer_ppo_max_token_len=$((max_tokens * 1))
 max_num_batched_tokens=$((max_tokens * 1))
 clip_ratio_low=0.2
-clip_ratio_high=0.2 # clip high
-train_batch_size=128
+clip_ratio_high=0.28 
+train_batch_size=1024
 ppo_mini_batch_size=128
 
 #############################
@@ -31,8 +31,8 @@ set -x
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=gae \
-    data.train_files=data/RubricHub_v1/RuRL/Split/train.parquet \
-    data.val_files=data/RubricHub_v1/RuRL/Split/test.parquet \
+    data.train_files=data/RubricHub_v1/RuRL/RubricHub_v1/RuRL/rurbichub_v1_Medical.parquet \
+    data.val_files=data/health_bench/healthbench.parquet \
     data.train_batch_size=${train_batch_size} \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \
@@ -59,7 +59,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
-    actor_rollout_ref.rollout.n=8 \
+    actor_rollout_ref.rollout.n=1 \
     actor_rollout_ref.rollout.max_num_batched_tokens=${max_num_batched_tokens} \
     actor_rollout_ref.rollout.temperature=1.0 \
     actor_rollout_ref.rollout.top_p=1.0 \
@@ -74,8 +74,16 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
+    critic.strategy=fsdp \
+    critic.model.path=${MODEL_PATH} \
+    critic.model.use_remove_padding=True \
+    critic.model.enable_gradient_checkpointing=True \
+    critic.optim.lr=1e-5 \
+    critic.model.fsdp_config.param_offload=True \
+    critic.model.fsdp_config.optimizer_offload=True \
+    critic.ppo_max_token_len_per_gpu=${actor_ppo_max_token_len} \
     algorithm.use_kl_in_reward=False \
-    trainer.critic_warmup=0 \
+    trainer.critic_warmup=30 \
     trainer.logger=['console','wandb'] \
     trainer.project_name="${PROJECT_NAME}" \
     trainer.experiment_name="${EXP_NAME}" \
