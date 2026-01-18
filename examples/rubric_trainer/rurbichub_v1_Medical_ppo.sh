@@ -32,7 +32,7 @@ set -x
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=gae \
     data.train_files=data/RubricHub_v1/RuRL/RubricHub_v1/RuRL/rurbichub_v1_Medical.parquet \
-    data.val_files=data/health_bench/healthbench.parquet \
+    data.val_files=data/health_bench/healthbench_val.parquet \
     data.train_batch_size=${train_batch_size} \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \

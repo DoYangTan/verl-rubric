@@ -58,7 +58,7 @@ class AsyncVLLMSampler:
         timeout: int = 1800,
         filter_think_tags: bool = True,
     ):
-        url_env = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
+        url_env = os.getenv("VLLM_BASE_URL", "http://localhost:8001/v1")
         self.base_urls = [base_url] if base_url else [url.strip() for url in url_env.split(',') if url.strip()]
         self.model = model or os.getenv("VLLM_MODEL", "default")
         self.virtual_loads = {url: 0 for url in self.base_urls}
@@ -283,12 +283,13 @@ async def async_grade_single_example(
     rule_indices = []
     llm_indices = []
     
-    for idx, item in enumerate(rubric_items):
-        if item.tags and item.tags.get("verifier") == "rule" and item.tags.get("function"):
-            rule_indices.append(idx)
-        else:
-            llm_indices.append(idx)
+    for i, item in enumerate(rubric_items):
+        verifier = item.tags.get("verifier", "llm")
 
+        if verifier == "rule":
+            rule_indices.append(i)
+        else:
+            llm_indices.append(i)
     # Execute Rule Check (Sync)
     for idx in rule_indices:
         item = rubric_items[idx]
@@ -320,32 +321,24 @@ async def async_grade_single_example(
 
 async def compute_score(
     solution_str: str,
-    ground_truth: Any,
+    ground_truth: Any = None,
     prompt: Any = None,
     **kwargs
 ) -> float:
-    """Entry point for verl RewardLoop"""
     try:
-        rm_data = ground_truth
-
-        if isinstance(rm_data, str):
-            try:
-                rm_data = json.loads(rm_data)
-            except json.JSONDecodeError:
-                pass
+        extra_info = kwargs.get("extra_info")
+        rm_data = extra_info.get("reward_model") if isinstance(extra_info, dict) else None
         
-        if not isinstance(rm_data, dict):
-            return 0.0
-
         rubrics = rm_data.get("rubrics", []) or rm_data.get("Rubric", [])
-        assert rubrics, "[grader debug] missing rubrics"
+        
             
         rubric_items = [RubricItem.from_dict(r) for r in rubrics]
         grader = get_global_grader()
         
-        # Ensure prompt is available (fetch from kwargs if not passed positionally)
-        input_prompt = prompt if prompt is not None else kwargs.get("prompt", [])
-        assert input_prompt, "[grader debug] missing prompt"
+        input_prompt = extra_info.get("prompt") if isinstance(extra_info, dict) else None
+        
+        if not input_prompt:
+            return 0.0
         
         score = await async_grade_single_example(
             input_prompt, 
@@ -354,7 +347,7 @@ async def compute_score(
             grader
         )
         return float(score)
-
+    
     except Exception as e:
         print(f"[RuscaRL Error] compute_score failed: {e}")
         return 0.0

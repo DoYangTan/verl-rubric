@@ -22,7 +22,7 @@ actor_ppo_max_token_len=$((max_tokens * 1))
 infer_ppo_max_token_len=$((max_tokens * 1))
 max_num_batched_tokens=$((max_tokens * 1))
 clip_ratio_low=0.2
-clip_ratio_high=0.2 # clip high
+clip_ratio_high=0.2 
 train_batch_size=128
 ppo_mini_batch_size=128
 
@@ -32,7 +32,7 @@ set -x
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     data.train_files=data/RubricHub_v1/RuRL/RubricHub_v1/RuRL/rurbichub_v1_Medical.parquet \
-    data.val_files=data/health_bench/healthbench.parquet \
+    data.val_files=data/health_bench/healthbench_val.parquet \
     data.train_batch_size=${train_batch_size} \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \

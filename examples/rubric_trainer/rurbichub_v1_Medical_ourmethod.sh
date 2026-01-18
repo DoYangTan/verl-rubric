@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=2,3,4,5
+export CUDA_VISIBLE_DEVICES=1,2,3,4
 export WANDB_API_KEY='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'
 export WANDB_HTTP_TIMEOUT=60
 
@@ -9,10 +9,8 @@ export http_proxy="http://127.0.0.1:10086"
 export https_proxy="http://127.0.0.1:10086"
 export all_proxy="socks5://127.0.0.1:10086"
 
-export no_proxy="localhost,127.0.0.1,0.0.0.0"
-
 NUM_GPUs=4
-EXP_NAME="rubrichub_v1_Medical_Qwen2.5-3B-Instruct_GRPO_highclip"
+EXP_NAME="rubrichub_v1_Medical_Qwen2.5-3B-Instruct_ourmethod"
 PROJECT_NAME="rubrichub_v1_Medical"
 MODEL_PATH="model_weight/Qwen/Qwen2.5-3B-Instruct"
 
@@ -28,6 +26,8 @@ clip_ratio_high=0.28 # clip high
 train_batch_size=128
 ppo_mini_batch_size=128
 
+export TOKENIZER_PATH="${MODEL_PATH}"
+
 #############################
 set -x
 
@@ -40,7 +40,7 @@ python3 -m verl.trainer.main_ppo \
     data.max_response_length=${max_response_length} \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
-    custom_reward_function.path=verl/utils/reward_score/rubric_reward/rurbichub_v1_Medical.py \
+    custom_reward_function.path=verl/utils/reward_score/rubric_reward/rubric_credit_assignment_reward.py \
     custom_reward_function.name=compute_score \
     actor_rollout_ref.model.path=${MODEL_PATH} \
     actor_rollout_ref.actor.optim.lr=1e-6 \
@@ -60,7 +60,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.max_num_batched_tokens=${max_num_batched_tokens} \
     actor_rollout_ref.rollout.temperature=1.0 \
@@ -83,8 +83,9 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name="${EXP_NAME}" \
     trainer.rollout_data_dir="log/rollout_log/${EXP_NAME}" \
     trainer.validation_data_dir="log/validation_log/${EXP_NAME}" \
-    trainer.n_gpus_per_node=${NUM_GPUs} \
-    trainer.nnodes=1 \
-    trainer.save_freq=20 \
-    trainer.test_freq=1 \
-    trainer.total_epochs=15 $@
+    
+    trainer.test_freq=20 \
+    trainer.total_epochs=15 $@ \
+    reward_model.enable=True \
+    reward_model.mode=naive \
+    reward_model.launch_reward_fn_async=False $@
