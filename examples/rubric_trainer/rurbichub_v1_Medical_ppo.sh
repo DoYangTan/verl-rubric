@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=1,2,3,4
+export CUDA_VISIBLE_DEVICES=3,4
 export WANDB_API_KEY='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'
 export WANDB_HTTP_TIMEOUT=60
 
@@ -9,7 +9,7 @@ export http_proxy="http://127.0.0.1:10086"
 export https_proxy="http://127.0.0.1:10086"
 export all_proxy="socks5://127.0.0.1:10086"
 
-NUM_GPUs=4
+NUM_GPUs=2
 EXP_NAME="rubrichub_v1_Medical_Qwen2.5-3B-Instruct_PPO"
 PROJECT_NAME="rubrichub_v1_Medical"
 MODEL_PATH="model_weight/Qwen/Qwen2.5-3B-Instruct"
@@ -58,7 +58,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
     actor_rollout_ref.rollout.n=1 \
     actor_rollout_ref.rollout.max_num_batched_tokens=${max_num_batched_tokens} \
     actor_rollout_ref.rollout.temperature=1.0 \
