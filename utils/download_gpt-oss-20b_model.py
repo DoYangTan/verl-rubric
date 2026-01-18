@@ -4,7 +4,7 @@ from huggingface_hub import snapshot_download
 
 # Model configuration
 model_id = "openai/gpt-oss-20b"
-local_dir = "ruscarl/model/openai/gpt-oss-20b"
+local_dir = "model_weight/gpt-oss-20b"
 
 print(f"Downloading {model_id} to {local_dir}...")
 
