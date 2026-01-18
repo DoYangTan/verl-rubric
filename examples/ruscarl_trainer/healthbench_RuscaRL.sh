@@ -5,15 +5,15 @@ export CUDA_VISIBLE_DEVICES=1,2,3,4
 export WANDB_API_KEY=''
 export WANDB_HTTP_TIMEOUT=60
 
-MODEL_PATH="ruscarl/model/Qwen/Qwen2.5-7B-Instruct"
+MODEL_PATH="model_weight/Qwen/Qwen2.5-7B-Instruct"
 EXPERIMENT_NAME="Qwen2.5-7B-Instruct_healthbench_RuscaRL_async"
 
 set -x
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files=ruscarl/data/health_bench/healthbench_train.parquet \
-    data.val_files=ruscarl/data/health_bench/healthbench_val.parquet \
+    data.train_files=data/health_bench/healthbench_train.parquet \
+    data.val_files=data/health_bench/healthbench_val.parquet \
     data.train_batch_size=64 \
     data.max_prompt_length=4096 \
     data.max_response_length=4096 \
