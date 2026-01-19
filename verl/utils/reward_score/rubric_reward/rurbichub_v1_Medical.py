@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
@@ -353,3 +354,11 @@ async def compute_score(
     except Exception as e:
         print(f"[RuscaRL Error] compute_score failed: {e}")
         return 0.0
+
+async def compute_score_random(
+    solution_str: str,
+    ground_truth: Any = None,
+    prompt: Any = None,
+    **kwargs
+) -> float:
+    return float(random.random())

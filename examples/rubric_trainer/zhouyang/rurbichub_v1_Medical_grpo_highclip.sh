@@ -5,9 +5,9 @@ pip install math-verify -U
 
 
 NUM_GPUs=8
-EXP_NAME="rubrichub_v1_Medical_Qwen2.5-3B-Instruct_GRPO_highclip"
+EXP_NAME="rubrichub_v1_Medical_Qwen2.5-7B-Instruct_GRPO_highclip"
 PROJECT_NAME="rubrichub_v1_Medical"
-MODEL_PATH="/mnt/hdfs/__MERLIN_USER_DIR__/models/Qwen2.5-3B-Instruct"
+MODEL_PATH="/mnt/hdfs/__MERLIN_USER_DIR__/models/Qwen2.5-7B-Instruct"
 
 export TENSORBOARD_DIR="hdfs://harunawl/home/byte_data_seed_wl/user/zhouyang.1107/trial_verl/tensorboard_log/${PROJECT_NAME}/${EXP_NAME}"
 
@@ -82,6 +82,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.validation_data_dir="/mnt/hdfs/__MERLIN_USER_DIR__/trial_verl/log/validation_log/${PROJECT_NAME}/${EXP_NAME}" \
     trainer.n_gpus_per_node=${NUM_GPUs} \
     trainer.nnodes=1 \
-    trainer.save_freq=20 \
-    trainer.test_freq=20 \
+    trainer.save_freq=10 \
+    trainer.test_freq=10 \
     trainer.total_epochs=15 $@
