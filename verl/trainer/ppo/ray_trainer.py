@@ -343,6 +343,7 @@ class RayPPOTrainer:
         # legacy reward model implementation
         self.use_rm = need_reward_model(self.role_worker_mapping)
         self.use_reward_loop = self.config.reward_model.use_reward_loop
+        self.use_reward_loop_for_custom = self.use_reward_loop and self.config.custom_reward_function.path is not None
 
         self.use_critic = need_critic(self.config)
         self.ray_worker_group_cls = ray_worker_group_cls
@@ -872,11 +873,14 @@ class RayPPOTrainer:
             # 2. reward model is enabled but extra resource pool is enabled
             # If we cannot parallelize, we should enable synchronous mode here, and launch a reward loop manager here
             # else for parallelize mode, we launch a reward worker for each rollout worker (in agent loop, not here)
-            if not can_reward_loop_parallelize:
+            if not can_reward_loop_parallelize or self.use_reward_loop_for_custom:
                 from verl.experimental.reward_loop import RewardLoopManager
 
-                self.config.reward_model.n_gpus_per_node = self.config.trainer.n_gpus_per_node
-                resource_pool = self.resource_pool_manager.get_resource_pool(Role.RewardModel)
+                if self.use_rm:
+                    self.config.reward_model.n_gpus_per_node = self.config.trainer.n_gpus_per_node
+                    resource_pool = self.resource_pool_manager.get_resource_pool(Role.RewardModel)
+                else:
+                    resource_pool = None
                 self.reward_loop_manager = RewardLoopManager(
                     config=self.config,
                     rm_resource_pool=resource_pool,
@@ -1455,7 +1459,7 @@ class RayPPOTrainer:
                             batch = batch.union(gen_baseline_output)
                             # compute reward model score on batch
                             rm_scores = None
-                            if self.use_rm and "rm_scores" not in batch.batch.keys():
+                            if (self.use_rm or self.use_reward_loop_for_custom) and "rm_scores" not in batch.batch.keys():
                                 if not self.use_reward_loop:
                                     rm_scores = self.rm_wg.compute_rm_score(batch)
                                 else:
@@ -1500,7 +1504,7 @@ class RayPPOTrainer:
                     batch.meta_info["images_seqlens"] = images_seqlens_all
                     with marked_timer("reward", timing_raw, color="yellow"):
                         # compute reward model score
-                        if self.use_rm and "rm_scores" not in batch.batch.keys():
+                        if (self.use_rm or self.use_reward_loop_for_custom) and "rm_scores" not in batch.batch.keys():
                             if not self.use_reward_loop:
                                 reward_tensor = self.rm_wg.compute_rm_score(batch)
                             else:
@@ -1509,7 +1513,10 @@ class RayPPOTrainer:
                             batch = batch.union(reward_tensor)
 
                         # Compute or extract reward for training
-                        if self.config.reward_model.launch_reward_fn_async:
+                        if (
+                            self.config.reward_model.launch_reward_fn_async
+                            and "rm_scores" not in batch.batch.keys()
+                        ):
                             future_reward = compute_reward_async.remote(
                                 data=batch, config=self.config, tokenizer=self.tokenizer
                             )
