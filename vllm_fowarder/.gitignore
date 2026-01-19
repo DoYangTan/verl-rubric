@@ -1,0 +1,5 @@
+# OS-specific
+.DS_Store
+
+# Python bytecode and caches
+__pycache__/
