@@ -3,8 +3,9 @@ pip install tensorboard
 pip install -U flashinfer-python
 pip install math-verify -U
 
+export CUDA_VISIBLE_DEVICES="0,1,2,3"
 
-NUM_GPUs=8
+NUM_GPUs=4
 EXP_NAME="rubrichub_v1_Medical_Qwen2.5-7B-Instruct_GRPO_highclip"
 PROJECT_NAME="rubrichub_v1_Medical"
 MODEL_PATH="/mnt/hdfs/__MERLIN_USER_DIR__/models/Qwen2.5-7B-Instruct"
