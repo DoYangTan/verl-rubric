@@ -48,26 +48,28 @@ class Backend:
 
 
 class BackendRegistry:
-    def __init__(self, backends: List[Backend]):
+    def __init__(self, backends: List[Backend], max_inflight_per_backend: int = 256):
         self.backends: Dict[str, Backend] = {b.name: b for b in backends}
         self.virtual_loads: Dict[str, int] = {b.name: 0 for b in backends}
-        self._lock = asyncio.Lock()
+        self.max_inflight_per_backend = max_inflight_per_backend
+        self._cond = asyncio.Condition()
 
     async def list_healthy(self) -> List[Backend]:
-        async with self._lock:
+        async with self._cond:
             return [Backend(**vars(b)) for b in self.backends.values() if b.healthy]
 
     async def get_all(self) -> List[Backend]:
-        async with self._lock:
+        async with self._cond:
             return [Backend(**vars(b)) for b in self.backends.values()]
 
     async def update(self, name: str, **kwargs):
-        async with self._lock:
+        async with self._cond:
             b = self.backends.get(name)
             if not b:
                 return
             for k, v in kwargs.items():
                 setattr(b, k, v)
+            self._cond.notify_all()
 
     async def reconcile(self, new_backends: List[Backend]):
         """Reconcile registry with a new backend list.
@@ -75,7 +77,7 @@ class BackendRegistry:
         - Update base URLs for existing names
         - Remove items no longer present
         """
-        async with self._lock:
+        async with self._cond:
             current = self.backends
             new_map: Dict[str, Backend] = {b.name: b for b in new_backends}
 
@@ -95,17 +97,19 @@ class BackendRegistry:
                     current[name] = nb
                     if name not in self.virtual_loads:
                         self.virtual_loads[name] = 0
+            self._cond.notify_all()
 
     async def reserve(self, name: str):
-        async with self._lock:
+        async with self._cond:
             self.virtual_loads[name] = self.virtual_loads.get(name, 0) + 1
 
     async def release(self, name: str):
-        async with self._lock:
+        async with self._cond:
             self.virtual_loads[name] = max(0, self.virtual_loads.get(name, 0) - 1)
+            self._cond.notify_all()
 
     async def get_virtuals(self) -> Dict[str, int]:
-        async with self._lock:
+        async with self._cond:
             return dict(self.virtual_loads)
 
     async def choose_and_reserve(self, exclude: Optional[Set[str]] = None) -> Optional[Backend]:
@@ -113,8 +117,14 @@ class BackendRegistry:
         Break ties randomly to avoid hot-spotting when many are equal.
         Returns a copy of the chosen backend or None if none available.
         """
-        async with self._lock:
-            healthy = [b for b in self.backends.values() if b.healthy and (not exclude or b.name not in exclude)]
+        async with self._cond:
+            healthy = [
+                b
+                for b in self.backends.values()
+                if b.healthy
+                and (not exclude or b.name not in exclude)
+                and self.virtual_loads.get(b.name, 0) < self.max_inflight_per_backend
+            ]
             if not healthy:
                 return None
 
@@ -137,6 +147,33 @@ class BackendRegistry:
             chosen = ties[0]
             self.virtual_loads[chosen.name] = self.virtual_loads.get(chosen.name, 0) + 1
             return Backend(**vars(chosen))
+
+    def _total_capacity_locked(self) -> int:
+        return len(self.backends) * self.max_inflight_per_backend
+
+    def _total_inflight_locked(self) -> int:
+        return sum(self.virtual_loads.values())
+
+    def _has_available_backend_locked(self, exclude: Optional[Set[str]] = None) -> bool:
+        for b in self.backends.values():
+            if not b.healthy:
+                continue
+            if exclude and b.name in exclude:
+                continue
+            if self.virtual_loads.get(b.name, 0) >= self.max_inflight_per_backend:
+                continue
+            return True
+        return False
+
+    async def wait_for_total_capacity(self):
+        async with self._cond:
+            while self._total_inflight_locked() >= self._total_capacity_locked():
+                await self._cond.wait()
+
+    async def wait_for_backend_slot(self, exclude: Optional[Set[str]] = None):
+        async with self._cond:
+            while not self._has_available_backend_locked(exclude=exclude):
+                await self._cond.wait()
 
 
 def normalize_base(line: str, default_port: int = 8101) -> Tuple[str, str, str]:
@@ -218,6 +255,7 @@ def create_app() -> FastAPI:
     default_port = int(os.getenv("BACKEND_DEFAULT_PORT", "8101"))
     upstream_timeout_seconds = float(os.getenv("UPSTREAM_TIMEOUT_SECONDS", "3600"))
     retry_delay_seconds = float(os.getenv("RETRY_DELAY_SECONDS", "1.0"))
+    max_inflight_per_backend = int(os.getenv("MAX_INFLIGHT_PER_BACKEND", "256"))
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
     logger = logging.getLogger("vllm_forwarder")
@@ -231,7 +269,7 @@ def create_app() -> FastAPI:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     backends = load_backends_from_file(ip_file, default_port=default_port)
-    registry = BackendRegistry(backends)
+    registry = BackendRegistry(backends, max_inflight_per_backend=max_inflight_per_backend)
     app = FastAPI(title="vLLM Forwarder", version="0.1.0")
 
     @app.on_event("startup")
@@ -338,11 +376,13 @@ def create_app() -> FastAPI:
         # Retry-forever loop: waits for healthy backend and retriable failures
         attempted: Set[str] = set()
         while True:
+            await registry.wait_for_total_capacity()
             exclude = attempted if attempted else None
             backend = await registry.choose_and_reserve(exclude=exclude)
             if not backend:
-                attempted.clear()
-                await asyncio.sleep(retry_delay_seconds)
+                if attempted:
+                    attempted.clear()
+                await registry.wait_for_backend_slot()
                 continue
 
             upstream_url = f"{backend.base_v1}/{subpath}" if subpath else backend.base_v1
