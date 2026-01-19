@@ -1,6 +1,7 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=1,2,3,4
+export CUDA_VISIBLE_DEVICES=2,3
+NUM_GPUs=2
 export WANDB_API_KEY='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'
 export WANDB_HTTP_TIMEOUT=60
 
@@ -11,10 +12,9 @@ export all_proxy="socks5://127.0.0.1:10086"
 
 export no_proxy="localhost,127.0.0.1,0.0.0.0"
 
-NUM_GPUs=4
-EXP_NAME="rubrichub_v1_Medical_Qwen2.5-3B-Instruct_GRPO_highclip"
+EXP_NAME="rubrichub_v1_Medical_Qwen2.5-7B-Instruct_GRPO_highclip"
 PROJECT_NAME="rubrichub_v1_Medical"
-MODEL_PATH="model_weight/Qwen/Qwen2.5-3B-Instruct"
+MODEL_PATH="model_weight/Qwen/Qwen2.5-7B-Instruct"
 
 max_prompt_length=4096
 max_response_length=4096
@@ -25,8 +25,8 @@ infer_ppo_max_token_len=$((max_tokens * 1))
 max_num_batched_tokens=$((max_tokens * 1))
 clip_ratio_low=0.2
 clip_ratio_high=0.28 # clip high
-train_batch_size=128
-ppo_mini_batch_size=128
+train_batch_size=64
+ppo_mini_batch_size=32
 
 #############################
 set -x
@@ -85,6 +85,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.validation_data_dir="log/validation_log/${EXP_NAME}" \
     trainer.n_gpus_per_node=${NUM_GPUs} \
     trainer.nnodes=1 \
-    trainer.save_freq=20 \
-    trainer.test_freq=1 \
+    trainer.save_freq=10 \
+    trainer.test_freq=10 \
     trainer.total_epochs=15 $@

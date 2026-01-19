@@ -2,9 +2,14 @@ import os
 import time
 from huggingface_hub import snapshot_download
 
+proxy_url = "http://127.0.0.1:10086"
+os.environ["http_proxy"] = proxy_url
+os.environ["https_proxy"] = proxy_url
+print(f"🌍 已配置代理: {proxy_url}")
+
 # Model configuration
 model_id = "Qwen/Qwen2.5-7B-Instruct"
-local_dir = "ruscarl/model/Qwen/Qwen2.5-7B-Instruct"
+local_dir = "model_weight/Qwen/Qwen2.5-7B-Instruct"
 
 print(f"Downloading {model_id} to {local_dir}...")
 
