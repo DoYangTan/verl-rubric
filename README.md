@@ -1,5 +1,7 @@
 # verl-Rubric: Rubric-based RL with Asynchronous Grader Scoring on verl
 
+> **⚠️Notice:** We have identified unexpected bugs in the current codebase. We are working on an urgent fix. Please stay tuned for updates.
+
 This repository contains the implementation of **Rubric-based RL** based on `verl` (v0.7). It utilizes the `RewardLoop` for efficient training and performs asynchronous rubric-based reward grading through an external vLLM grader.
 
 > **Note:** All commands below must be executed from the **root directory** of the `verl-rubric` project.
