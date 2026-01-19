@@ -36,6 +36,9 @@ python3 -m verl.trainer.main_ppo \
     data.max_response_length=${max_response_length} \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
+    data.return_raw_chat=True \
+    reward_model.use_reward_loop=True \
+    reward_model.num_workers=1 \
     custom_reward_function.path=verl/utils/reward_score/rubric_reward/rurbichub_v1_Medical.py \
     custom_reward_function.name=compute_score \
     actor_rollout_ref.model.path=${MODEL_PATH} \
@@ -56,6 +59,8 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=vllm \
+    actor_rollout_ref.rollout.mode=async \
+    actor_rollout_ref.rollout.agent.default_agent_loop=single_turn_agent \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.max_num_batched_tokens=${max_num_batched_tokens} \
