@@ -21,8 +21,8 @@ infer_ppo_max_token_len=$((max_tokens * 1))
 max_num_batched_tokens=$((max_tokens * 1))
 clip_ratio_low=0.2
 clip_ratio_high=0.28 # clip high
-train_batch_size=1024
-ppo_mini_batch_size=128
+train_batch_size=512
+ppo_mini_batch_size=32
 
 
 #############################
@@ -96,6 +96,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.validation_data_dir="/mnt/hdfs/__MERLIN_USER_DIR__/trial_verl/log/validation_log/${PROJECT_NAME}/${EXP_NAME}" \
     trainer.n_gpus_per_node=${NUM_GPUs} \
     trainer.nnodes=1 \
-    trainer.save_freq=10 \
-    trainer.test_freq=10 \
+    trainer.save_freq=20 \
+    trainer.test_freq=5 \
     trainer.total_epochs=15 $@
