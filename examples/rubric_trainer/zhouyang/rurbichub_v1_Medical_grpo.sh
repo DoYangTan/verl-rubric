@@ -6,21 +6,25 @@ pip install math-verify -U
 export CUDA_VISIBLE_DEVICES="0,1,2,3"
 
 NUM_GPUs=4
-EXP_NAME="rubrichub_v1_Medical_Qwen2.5-7B-Instruct_GRPO_highclip"
+EXP_NAME="rubrichub_v1_Medical_Qwen2.5-7B-Instruct_GRPO"
 PROJECT_NAME="rubrichub_v1_Medical"
 MODEL_PATH="/mnt/hdfs/__MERLIN_USER_DIR__/models/Qwen2.5-7B-Instruct"
 
 export TENSORBOARD_DIR="hdfs://harunawl/home/byte_data_seed_wl/user/zhouyang.1107/trial_verl/tensorboard_log/${PROJECT_NAME}/${EXP_NAME}"
 
-max_prompt_length=4096
-max_response_length=4096
-use_dynamic_bsz=True
+max_prompt_length=$((1024*4))
+max_response_length=$((1024*8))
 max_tokens=$((max_prompt_length + max_response_length))
+enable_overlong_buffer=True
+overlong_buffer_len=$((1024*4))
+overlong_buffer_penalty_factor=0.5
+clip_ratio_low=0.2
+clip_ratio_high=0.2
+
+use_dynamic_bsz=True
 actor_ppo_max_token_len=$((max_tokens * 1))
 infer_ppo_max_token_len=$((max_tokens * 1))
 max_num_batched_tokens=$((max_tokens * 1))
-clip_ratio_low=0.2
-clip_ratio_high=0.28 # clip high
 train_batch_size=64
 ppo_mini_batch_size=32
 
@@ -28,7 +32,7 @@ ppo_mini_batch_size=32
 #############################
 set -x
 
-python3 -m verl.trainer.main_ppo \
+python3 -m recipe.dapo.main_dapo \
     algorithm.adv_estimator=grpo \
     data.train_files=hdfs://harunawl/home/byte_data_seed_wl/user/zhouyang.1107/data/rubric/RubricHub/rurbichub_v1_Medical.parquet \
     data.val_files=hdfs://harunawl/home/byte_data_seed_wl/user/zhouyang.1107/data/rubric/health_bench/healthbench_val.parquet \
@@ -37,6 +41,9 @@ python3 -m verl.trainer.main_ppo \
     data.max_response_length=${max_response_length} \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
+    reward_model.overlong_buffer.enable=${enable_overlong_buffer} \
+    reward_model.overlong_buffer.len=${overlong_buffer_len} \
+    reward_model.overlong_buffer.penalty_factor=${overlong_buffer_penalty_factor} \
     data.return_raw_chat=True \
     reward_model.use_reward_loop=True \
     reward_model.num_workers=1 \
