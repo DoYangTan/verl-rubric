@@ -97,6 +97,7 @@ class NaiveRewardManager(AbstractRewardManager):
             else:
                 reward = score
 
+            # [0.0, 0.0, 0.8, 0.0, ..., padding]
             reward_tensor[i, valid_response_length - 1] = reward
 
             if data_source not in already_print_data_sources:
@@ -104,9 +105,8 @@ class NaiveRewardManager(AbstractRewardManager):
 
             if already_print_data_sources[data_source] < self.num_examine:
                 already_print_data_sources[data_source] += 1
-                print("[prompt]", prompt_str)
-                print("[response]", response_str)
-                print("[ground_truth]", ground_truth)
+
+
                 if isinstance(score, dict):
                     for key, value in score.items():
                         print(f"[{key}]", value)
