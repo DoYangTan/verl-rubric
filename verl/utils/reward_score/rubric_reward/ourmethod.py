@@ -389,41 +389,13 @@ async def async_grade_single_example(
         llm_results = _parse_presence_response(sampler_response.response_text, len(llm_items))
         
 
-        
+
         for local_idx, global_idx in enumerate(llm_indices):
             grading_response_list[global_idx] = {"criteria_met": llm_results.get(local_idx + 1, False)}
 
     return calculate_score(rubric_items, grading_response_list)
 
-async def compute_score(
-    solution_str: str,
-    ground_truth: Any = None,
-    prompt: Any = None,
-    **kwargs
-) -> float:
-    try:
-        extra_info = kwargs.get("extra_info")
-        rm_data = extra_info.get("reward_model") if isinstance(extra_info, dict) else None
-        
-        rubrics = rm_data.get("rubrics", []) or rm_data.get("Rubric", [])
-        
-        rubric_items = [RubricItem.from_dict(r) for r in rubrics]
 
-        grader = get_global_grader()
-        
-        input_prompt = extra_info.get("prompt") if isinstance(extra_info, dict) else None
-        
-        if not input_prompt:
-            return 0.0
-        
-        score = await async_grade_single_example(
-            input_prompt, 
-            solution_str, 
-            rubric_items, 
-            grader
-        )
-        return float(score)
-    
-    except Exception as e:
-        print(f"[RuscaRL Error] compute_score failed: {e}")
-        return 0.0
+
+
+
