@@ -218,6 +218,7 @@ def _parse_presence_response(resp_text: str, expected_count: int) -> Dict[int, b
         if expected_count and len(results) != expected_count:
             print(f"[grader debug] parsed count mismatch: expected={expected_count}, got={len(results)}")
             print(resp_text)
+            # 修改点1
             return False
         return True
 
@@ -244,6 +245,7 @@ def _parse_presence_response(resp_text: str, expected_count: int) -> Dict[int, b
     try:
         data = json.loads(cleaned)
         results = _coerce_results(data)
+        # 修改点2
         return results if _validate_count(results) else {}
     except Exception:
         print("[grader debug] failed to parse json object fallback")
@@ -326,32 +328,27 @@ async def compute_score(
     **kwargs
 ) -> float:
     try:
-        # 为了保持逻辑完整，前面的参数提取可以保留，
-        # 但其实为了极致的性能测试，您可以直接在第一行返回。
+        extra_info = kwargs.get("extra_info")
+        rm_data = extra_info.get("reward_model") if isinstance(extra_info, dict) else None
         
-        # extra_info = kwargs.get("extra_info")
-        # rm_data = extra_info.get("reward_model") if isinstance(extra_info, dict) else None
-        # rubrics = rm_data.get("rubrics", []) or rm_data.get("Rubric", [])
-        # rubric_items = [RubricItem.from_dict(r) for r in rubrics]
-        # grader = get_global_grader()
-        # input_prompt = extra_info.get("prompt") if isinstance(extra_info, dict) else None
+        rubrics = rm_data.get("rubrics", []) or rm_data.get("Rubric", [])
         
-        # if not input_prompt:
-        #    return 0.0
+            
+        rubric_items = [RubricItem.from_dict(r) for r in rubrics]
+        grader = get_global_grader()
         
-        # --- 性能测试修改开始 ---
-        # 直接跳过 LLM 调用
-        # score = await async_grade_single_example(
-        #     input_prompt, 
-        #     solution_str, 
-        #     rubric_items, 
-        #     grader
-        # )
+        input_prompt = extra_info.get("prompt") if isinstance(extra_info, dict) else None
         
-        # 模拟直接返回满分 1.0 (或者 0.0)
-        # 也可以用 random.choice([0.0, 1.0]) 来模拟一点随机性
-        return 1.0 
-        # --- 性能测试修改结束 ---
+        if not input_prompt:
+            return 0.0
+        
+        score = await async_grade_single_example(
+            input_prompt, 
+            solution_str, 
+            rubric_items, 
+            grader
+        )
+        return float(score)
     
     except Exception as e:
         print(f"[RuscaRL Error] compute_score failed: {e}")
