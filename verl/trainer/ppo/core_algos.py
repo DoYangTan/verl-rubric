@@ -96,6 +96,14 @@ class AdvantageEstimator(str, Enum):
 
     GAE = "gae"
     GRPO = "grpo"
+
+    """
+        zchen
+    """
+    GRPO_V1_1 = "grpo_v1_1"
+    GRPO_V1_2 = "grpo_v1_2"
+    GRPO_V1_3 = "grpo_v1_3"
+
     REINFORCE_PLUS_PLUS = "reinforce_plus_plus"
     REINFORCE_PLUS_PLUS_BASELINE = "reinforce_plus_plus_baseline"
     REMAX = "remax"
@@ -329,113 +337,166 @@ def compute_grpo_outcome_advantage(
 
     return scores, scores
 
-# """
-#     zchen
-# """
-# @register_adv_est(AdvantageEstimator.GRPO_Assign1_1)  
-# def compute_grpo_outcome_advantage1_1(
-#     token_level_rewards: torch.Tensor,
-#     response_mask: torch.Tensor,
-#     index: np.ndarray,
-#     epsilon: float = 1e-6,
-#     norm_adv_by_std_in_grpo: bool = True,
-#     config: Optional[AlgoConfig] = None,
-# ) -> tuple[torch.Tensor, torch.Tensor]:
-#     """
-#     改进 1.1 分段奖励填充
-#     """
-#     with torch.no_grad():
-#         bsz, seq_len = token_level_rewards.shape
 
-#         filled_rewards = token_level_rewards.clone()
-#         for i in range(bsz):
-#             valid_len = int(response_mask[i].sum().item())
-#             current_val = 0.0
-#             for j in range(valid_len - 1, -1, -1):
-#                 if filled_rewards[i, j] != 0:
-#                     current_val = filled_rewards[i, j]
-#                 filled_rewards[i, j] = current_val
+"""
+    zchen
+"""
+@register_adv_est(AdvantageEstimator.GRPO_V1_1)  
+def compute_grpo_outcome_advantage1_1(
+    token_level_rewards: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    config: Optional[AlgoConfig] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    
+    with torch.no_grad():
+        bsz, seq_len = token_level_rewards.shape
+
+        filled_rewards = token_level_rewards.clone()
+        for i in range(bsz):
+            valid_len = int(response_mask[i].sum().item())
+            current_val = 0.0
+            for j in range(valid_len - 1, -1, -1):
+                if filled_rewards[i, j] != 0:
+                    current_val = filled_rewards[i, j]
+                filled_rewards[i, j] = current_val
         
-#         filled_rewards = filled_rewards * response_mask
+        filled_rewards = filled_rewards * response_mask
 
-#         advantages = torch.zeros_like(filled_rewards)
-#         unique_indices = np.unique(index)
+        advantages = torch.zeros_like(filled_rewards)
+        unique_indices = np.unique(index)
         
-#         for idx in unique_indices:
-#             group_mask = (index == idx)
-#             group_rewards = filled_rewards[group_mask]
-#             group_resp_mask = response_mask[group_mask]
+        for idx in unique_indices:
+            group_mask = (index == idx)
+            group_rewards = filled_rewards[group_mask]
+            group_resp_mask = response_mask[group_mask]
             
-#             count_active = group_resp_mask.sum(dim=0)
-#             mean = group_rewards.sum(dim=0) / (count_active + epsilon)
+            count_active = group_resp_mask.sum(dim=0)
+            mean = group_rewards.sum(dim=0) / (count_active + epsilon)
             
-#             mean_sq = (group_rewards**2).sum(dim=0) / (count_active + epsilon)
-#             std = torch.sqrt(torch.clamp(mean_sq - mean**2, min=0.0))
+            mean_sq = (group_rewards**2).sum(dim=0) / (count_active + epsilon)
+            std = torch.sqrt(torch.clamp(mean_sq - mean**2, min=0.0))
             
 
-#             if norm_adv_by_std_in_grpo:
-#                 group_adv = (group_rewards - mean.unsqueeze(0)) / (std.unsqueeze(0) + epsilon)
-#             else:
-#                 group_adv = group_rewards - mean.unsqueeze(0)
+            if norm_adv_by_std_in_grpo:
+                group_adv = (group_rewards - mean.unsqueeze(0)) / (std.unsqueeze(0) + epsilon)
+            else:
+                group_adv = group_rewards - mean.unsqueeze(0)
                 
-#             advantages[group_mask] = group_adv * group_resp_mask
+            advantages[group_mask] = group_adv * group_resp_mask
 
-#     return advantages, advantages
+    return advantages, advantages
 
+"""
+    zchen
+"""
+@register_adv_est(AdvantageEstimator.GRPO_V1_2)  
+def compute_grpo_outcome_advantage1_2(
+    token_level_rewards: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    config: Optional[AlgoConfig] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    
+    with torch.no_grad():
+        bsz, seq_len = token_level_rewards.shape
 
-# """
-#     zchen
-# """
-# @register_adv_est(AdvantageEstimator.GRPO_Assign1_2)  
-# def compute_grpo_outcome_advantage1_2(
-#     token_level_rewards: torch.Tensor,
-#     response_mask: torch.Tensor,
-#     index: np.ndarray,
-#     epsilon: float = 1e-6,
-#     norm_adv_by_std_in_grpo: bool = True,
-#     config: Optional[AlgoConfig] = None,
-# ) -> tuple[torch.Tensor, torch.Tensor]:
-#     """
-#     改进 1.2 累加奖励填充
-#     """
-#     with torch.no_grad():
-#         bsz, seq_len = token_level_rewards.shape
-
-#         filled_rewards = token_level_rewards.clone()
-#         for i in range(bsz):
-#             valid_len = int(response_mask[i].sum().item())
-#             current_val = 0.0
-#             for j in range(valid_len - 1, -1, -1):
-#                 if filled_rewards[i, j] != 0:
-#                     current_val = filled_rewards[i, j]
-#                 filled_rewards[i, j] = current_val
+        filled_rewards = token_level_rewards.clone()
+        for i in range(bsz):
+            valid_len = int(response_mask[i].sum().item())
+            current_val = 0.0
+            for j in range(valid_len - 1, -1, -1):
+                if filled_rewards[i, j] != 0:
+                    current_val = filled_rewards[i, j]
+                filled_rewards[i, j] = current_val
         
-#         filled_rewards = filled_rewards * response_mask
+        filled_rewards = filled_rewards * response_mask
 
-#         advantages = torch.zeros_like(filled_rewards)
-#         unique_indices = np.unique(index)
+        advantages = torch.zeros_like(filled_rewards)
+        unique_indices = np.unique(index)
         
-#         for idx in unique_indices:
-#             group_mask = (index == idx)
-#             group_rewards = filled_rewards[group_mask]
-#             group_resp_mask = response_mask[group_mask]
+        for idx in unique_indices:
+            group_mask = (index == idx)
+            group_rewards = filled_rewards[group_mask]
+            group_resp_mask = response_mask[group_mask]
             
-#             count_active = group_resp_mask.sum(dim=0)
-#             mean = group_rewards.sum(dim=0) / (count_active + epsilon)
+            count_active = group_resp_mask.sum(dim=0)
+            mean = group_rewards.sum(dim=0) / (count_active + epsilon)
             
-#             mean_sq = (group_rewards**2).sum(dim=0) / (count_active + epsilon)
-#             std = torch.sqrt(torch.clamp(mean_sq - mean**2, min=0.0))
+            mean_sq = (group_rewards**2).sum(dim=0) / (count_active + epsilon)
+            std = torch.sqrt(torch.clamp(mean_sq - mean**2, min=0.0))
             
 
-#             if norm_adv_by_std_in_grpo:
-#                 group_adv = (group_rewards - mean.unsqueeze(0)) / (std.unsqueeze(0) + epsilon)
-#             else:
-#                 group_adv = group_rewards - mean.unsqueeze(0)
+            if norm_adv_by_std_in_grpo:
+                group_adv = (group_rewards - mean.unsqueeze(0)) / (std.unsqueeze(0) + epsilon)
+            else:
+                group_adv = group_rewards - mean.unsqueeze(0)
                 
-#             advantages[group_mask] = group_adv * group_resp_mask
+            advantages[group_mask] = group_adv * group_resp_mask
 
-#     return advantages, advantages
+    return advantages, advantages
 
+"""
+    zchen
+"""
+@register_adv_est(AdvantageEstimator.GRPO_V1_3) 
+def compute_grpo_outcome_advantage_v1_3(
+    token_level_rewards: torch.Tensor,
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    config: Optional[AlgoConfig] = None,
+    decay_factor: float = 0.95
+) -> tuple[torch.Tensor, torch.Tensor]:
+
+    with torch.no_grad():
+        bsz, seq_len = token_level_rewards.shape
+        processed_rewards = torch.zeros_like(token_level_rewards)
+        
+        for i in range(bsz):
+            global_reward_sum = 0.0      
+            current_val = 0.0            
+    
+            for j in range(seq_len):
+                if response_mask[i, j] == 0:
+                    continue
+                
+                raw_new = token_level_rewards[i, j].item()
+                
+                if raw_new > 0:
+                    global_reward_sum += raw_new
+                    old_residue = current_val 
+                    current_val = global_reward_sum 
+                else:
+                    current_val *= decay_factor
+                
+                processed_rewards[i, j] = current_val
+
+        advantages = torch.zeros_like(processed_rewards)
+        unique_indices = np.unique(index)
+        
+        for idx in unique_indices:
+            group_mask = (index == idx)
+            group_rewards = processed_rewards[group_mask]
+            group_resp_mask = response_mask[group_mask]
+            
+            count_active = group_resp_mask.sum(dim=0).clamp(min=epsilon)
+            mean = group_rewards.sum(dim=0) / count_active
+            mean_sq = (group_rewards**2).sum(dim=0) / count_active
+            std = torch.sqrt(torch.clamp(mean_sq - mean**2, min=0.0))
+            
+            if norm_adv_by_std_in_grpo:
+                group_adv = (group_rewards - mean) / (std + epsilon)
+            else:
+                group_adv = (group_rewards - mean)
+            advantages[group_mask] = group_adv * group_resp_mask
+
+    return processed_rewards, advantages
 
 @register_adv_est(AdvantageEstimator.GRPO_VECTORIZED)
 def compute_grpo_vectorized_outcome_advantage(

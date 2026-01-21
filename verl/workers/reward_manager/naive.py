@@ -106,12 +106,12 @@ class NaiveRewardManager(AbstractRewardManager):
             if already_print_data_sources[data_source] < self.num_examine:
                 already_print_data_sources[data_source] += 1
 
-
                 if isinstance(score, dict):
                     for key, value in score.items():
                         print(f"[{key}]", value)
                 else:
                     print("[score]", score)
+
 
         if return_dict:
             return {

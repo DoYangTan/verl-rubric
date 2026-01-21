@@ -78,6 +78,17 @@ class BatchRewardManager(AbstractRewardManager):
         return scores
 
     def __call__(self, data: DataProto, return_dict: bool = False) -> torch.Tensor | dict[str, Any]:
+        
+        # --- 强效调试逻辑：记录调用类名、PID 和样本量 ---
+        import os
+        debug_log_path = "/workspace/verl/verl-rubric-dev/ray_worker_debug.log"
+        try:
+            with open(debug_log_path, "a") as f:
+                f.write(f"[CALL TRACE] Class: BatchRewardManager | PID: {os.getpid()} | Data length: {len(data)}\n")
+        except Exception as e:
+            # 如果路径没权限，至少在控制台报个错
+            print(f"DEBUG LOG WRITE FAILED: {e}")
+
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
         reward_from_rm_scores = self._extract_reward_from_rm_scores(data, return_dict)
         if reward_from_rm_scores is not None:

@@ -320,80 +320,93 @@ async def async_grade_single_example(
         llm_items = [rubric_items[i] for i in llm_indices]
         prompt_text = _build_batch_grader_prompt(prompt, response, llm_items)
 
-
-
-        # # === 新增：将 Prompt 写入日志文件 ===
-        # import random
-        # import datetime
-        
-        # # 1. 生成唯一的 Tag 和时间，方便和后面的 Result 对应（大致时间上对应）
-        # p_tag = random.randint(1000, 9999)
-        # p_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # # 2. 组装内容：加上显眼的箭头，因为 Prompt 通常很长
-        # log_content = (
-        #     f"\n[Time:{p_time}][ID:{p_tag}] >>>>>>>>> Grader Prompt 输入 (Start) >>>>>>>>>\n"
-        #     f"{prompt_text}\n"
-        #     f"[ID:{p_tag}] <<<<<<<<< Grader Prompt 输入 (End) <<<<<<<<<\n\n"
-        # )
-        
-        # # 3. 写入同一个文件 (使用 'a' 追加模式)
-        # # 建议使用绝对路径，确保所有进程写到一起
-        # log_file_path = "/tmp/grader_debug_log.txt" 
-        
-        # try:
-        #     with open(log_file_path, "a", encoding="utf-8") as f:
-        #         f.write(log_content)
-        # except Exception as e:
-        #     print(f"写入 Prompt 日志失败: {e}", flush=True)
-        # # =======================================
-
-
-        
-
         # Async call to grader
         sampler_response = await grader_model([{"role": "user", "content": prompt_text}])
 
-        # import random
-        # import os
-        # import datetime
-
-        # tag = random.randint(1000, 9999)
-        # timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # ============= 插入日志记录逻辑 =============
+        import datetime
+        import uuid
         
-        # # 定义日志文件路径 (通常放在 /tmp 下最简单，或者您指定的任何绝对路径)
-        # log_file_path = "grader_debug_log.txt"
+        log_file_path = "grader_debug_log.txt"
+        request_id = str(uuid.uuid4())[:8] # 生成一个简短的唯一ID区分并发请求
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # # 组装要写入的文本内容
-        # log_content = (
-        #     f"\n[Time:{timestamp}][ID:{tag}] ==================== Grader 结果 ====================\n"
-        #     f"[ID:{tag}] 1. Text: {sampler_response.response_text}\n"
-        #     f"[ID:{tag}] 2. Metadata: {sampler_response.response_metadata}\n"
-        #     f"[ID:{tag}] 3. Messages: {str(sampler_response.actual_queried_message_list)}\n"
-        #     f"[ID:{tag}] ==================================================================\n"
-        # )
+        log_content = (
+            f"\n{'='*30} Grader Log Start (ID: {request_id}) {'='*30}\n"
+            f"Time: {timestamp}\n"
+            f"--- [1. Grader Raw Output Text] ---\n{sampler_response.response_text}\n\n"
+            f"--- [2. Metadata] ---\n{json.dumps(sampler_response.response_metadata, indent=2)}\n\n"
+            f"--- [3. Full Prompt Sent to Grader] ---\n{json.dumps(sampler_response.actual_queried_message_list, indent=2, ensure_ascii=False)}\n"
+            f"{'='*30} Grader Log End (ID: {request_id}) {'='*30}\n"
+        )
 
-        # # === 核心：写入文件 (使用 'a' 追加模式) ===
-        # try:
-        #     # encoding='utf-8' 保证中文不乱码
-        #     with open(log_file_path, "a", encoding="utf-8") as f:
-        #         f.write(log_content)
-            
-        #     # (可选) 如果您还想在控制台保留一份，这行可以留着，不想看可以注释掉
-        #     # print(f"已写入日志到: {log_file_path}", flush=True) 
-            
-        # except Exception as e:
-        #     # 万一写文件失败（比如磁盘满了），打印个错误，千万别让训练崩了
-        #     print(f"写入临时文件失败: {e}", flush=True)
+        try:
+            # 使用 'a' 追加模式，encoding='utf-8' 支持中文
+            with open(log_file_path, "a", encoding="utf-8") as f:
+                f.write(log_content)
+        except Exception as e:
+            print(f"[Log Error] Failed to write log: {e}")
+        # ===========================================
+
 
         llm_results = _parse_presence_response(sampler_response.response_text, len(llm_items))
         
-
+        # ============= 写入解析后的结果到独立文件 =============
+        parsed_log_path = "parsed_results.txt"
+        try:
+            with open(parsed_log_path, "a", encoding="utf-8") as f_parsed:
+                # 记录时间、ID 以及解析后的字典
+                log_entry = {
+                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "request_id": request_id,
+                    "parsed_dict": llm_results,
+                    "expected_count": len(llm_items),
+                    "actual_count": len(llm_results)
+                }
+                f_parsed.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+        except Exception as e:
+            print(f"[Log Error] Failed to write parsed log: {e}")
+        # ===================================================
 
         for local_idx, global_idx in enumerate(llm_indices):
             grading_response_list[global_idx] = {"criteria_met": llm_results.get(local_idx + 1, False)}
 
     return calculate_score(rubric_items, grading_response_list)
+
+async def compute_score(
+    solution_str: str,
+    ground_truth: Any = None,
+    prompt: Any = None,
+    **kwargs
+) -> float:
+    try:
+        extra_info = kwargs.get("extra_info")
+        rm_data = extra_info.get("reward_model") if isinstance(extra_info, dict) else None
+        
+        rubrics = rm_data.get("rubrics", []) or rm_data.get("Rubric", [])
+        
+            
+        rubric_items = [RubricItem.from_dict(r) for r in rubrics]
+        grader = get_global_grader()
+        
+        input_prompt = extra_info.get("prompt") if isinstance(extra_info, dict) else None
+        
+        if not input_prompt:
+            return 0.0
+        
+        score = await async_grade_single_example(
+            input_prompt, 
+            solution_str, 
+            rubric_items, 
+            grader
+        )
+        return float(score)
+    
+    except Exception as e:
+        print(f"[Rubric Error] compute_score failed: {e}")
+        return 0.0
+
+
 
 
 

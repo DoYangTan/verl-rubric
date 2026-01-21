@@ -469,9 +469,28 @@ class RayPPOTrainer:
             if len(v) == n:
                 base_data[k] = v
 
+        def _to_jsonable(value: Any):
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return value
+            if isinstance(value, np.generic):
+                return value.item()
+            if isinstance(value, torch.Tensor):
+                return value.item() if value.numel() == 1 else value.detach().cpu().tolist()
+            if isinstance(value, (list, tuple)):
+                return [_to_jsonable(v) for v in value]
+            if isinstance(value, dict):
+                return {k: _to_jsonable(v) for k, v in value.items()}
+            if hasattr(value, "tolist"):
+                try:
+                    return value.tolist()
+                except Exception:
+                    pass
+            return str(value)
+
         lines = []
         for i in range(n):
-            entry = {k: v[i] for k, v in base_data.items()}
+            # Normalize numpy/torch scalars so JSONL logging doesn't crash.
+            entry = {k: _to_jsonable(v[i]) for k, v in base_data.items()}
             lines.append(json.dumps(entry, ensure_ascii=False))
 
         with open(filename, "w") as f:
