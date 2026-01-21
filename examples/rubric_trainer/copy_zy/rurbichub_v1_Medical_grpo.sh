@@ -44,12 +44,11 @@ python3 -m verl.trainer.main_ppo \
     reward_model.use_reward_loop=True \
     reward_model.num_workers=1 \
     reward_model.reward_manager=dapo \
-    +reward_model.reward_kwargs={} \
-    reward_model.reward_kwargs.overlong_buffer_cfg.enable=${enable_overlong_buffer} \
-    reward_model.reward_kwargs.overlong_buffer_cfg.len=${overlong_buffer_len} \
-    reward_model.reward_kwargs.overlong_buffer_cfg.penalty_factor=${overlong_buffer_penalty_factor} \
-    reward_model.reward_kwargs.overlong_buffer_cfg.log=True \
-    reward_model.reward_kwargs.max_resp_len=${max_response_length} \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.enable=${enable_overlong_buffer} \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.len=${overlong_buffer_len} \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.penalty_factor=${overlong_buffer_penalty_factor} \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.log=True \
+    +reward_model.reward_kwargs.max_resp_len=${max_response_length} \
     custom_reward_function.path=verl/utils/reward_score/rubric_reward/rurbichub_v1_Medical.py \
     custom_reward_function.name=compute_score \
     actor_rollout_ref.model.path=${MODEL_PATH} \

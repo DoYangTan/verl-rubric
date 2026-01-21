@@ -201,6 +201,35 @@ Example response:
 {rubrics_str}
 </Rubrics>'''
 
+def _build_attribution_prompt(response: str, rubric_items: List[RubricItem], present_indices: List[int]) -> str:
+    """Build prompt for attribution LLM."""
+    rubrics_str = "\n".join(
+        f"{idx}. {rubric_items[idx - 1].criterion}" for idx in present_indices
+    )
+    return f'''You are an attribution judge. You will be given an assistant response and a list of rubric items that are already judged PRESENT.
+
+For each rubric item, find the SHORTEST contiguous substring from the response that best supports the rubric.
+Return a valid JSON object that starts with "```json" and ends with "```".
+The keys must be the rubric numbers provided, and the values must be the exact evidence substring copied from the response.
+If you cannot find evidence for a rubric, return an empty string for that key.
+Do not add any extra text.
+
+Example response:
+```json
+{{
+  "1": "evidence text here",
+  "3": ""
+}}
+```
+
+<Response>
+{response}
+</Response>
+
+<Rubrics>
+{rubrics_str}
+</Rubrics>'''
+
 def _parse_presence_response(resp_text: str, expected_count: int) -> Dict[int, bool]:
     """Parse JSON response with robust extraction"""
     if not isinstance(resp_text, str) or resp_text == "{}":
@@ -273,12 +302,117 @@ def calculate_score(rubric_items: List[RubricItem], grading_response_list: List[
     return float(max(0.0, achieved_points / total_possible_points))
 
 _global_grader = None
+_global_attribution_grader = None
 
 def get_global_grader():
     global _global_grader
     if _global_grader is None:
         _global_grader = AsyncVLLMSampler(filter_think_tags=True)
     return _global_grader
+
+def get_global_attribution_grader():
+    global _global_attribution_grader
+    if _global_attribution_grader is None:
+        base_url = os.getenv("ATTRIBUTION_VLLM_BASE_URL")
+        model = os.getenv("ATTRIBUTION_VLLM_MODEL")
+        temperature = float(os.getenv("ATTRIBUTION_VLLM_TEMPERATURE", "0"))
+        max_tokens = int(os.getenv("ATTRIBUTION_VLLM_MAX_TOKENS", "512"))
+        _global_attribution_grader = AsyncVLLMSampler(
+            base_url=base_url,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            filter_think_tags=True,
+        )
+    return _global_attribution_grader
+
+def _parse_attribution_response(resp_text: str, allowed_indices: List[int]) -> Dict[int, str]:
+    """Parse JSON attribution response."""
+    if not isinstance(resp_text, str) or resp_text == "{}":
+        return {}
+
+    allowed_set = set(allowed_indices)
+
+    match = re.search(r"```json\s*(\{.*?\})\s*```", resp_text, re.DOTALL | re.IGNORECASE)
+    if match:
+        cleaned = match.group(1).strip()
+    else:
+        match = re.search(r"\{.*\}", resp_text, re.DOTALL)
+        if not match:
+            return {}
+        cleaned = match.group(0).strip()
+
+    cleaned = re.sub(r",\s*}", "}", cleaned)
+    try:
+        data = json.loads(cleaned)
+    except Exception:
+        return {}
+
+    results = {}
+    for key, val in data.items():
+        try:
+            idx = int(key)
+        except (ValueError, TypeError):
+            continue
+        if idx not in allowed_set:
+            continue
+        if isinstance(val, str):
+            results[idx] = val.strip()
+        elif val is None:
+            results[idx] = ""
+    return results
+
+async def async_attribute_response(
+    response: str,
+    rubric_items: List[RubricItem],
+    llm_results: Dict[int, bool],
+    request_id: str,
+) -> Dict[int, str]:
+    """Async attribution call to external LLM."""
+    present_indices = sorted([idx for idx, ok in llm_results.items() if ok])
+    if not present_indices:
+        return {}
+
+    prompt_text = _build_attribution_prompt(response, rubric_items, present_indices)
+    grader = get_global_attribution_grader()
+    sampler_response = await grader([{"role": "user", "content": prompt_text}])
+
+    # Log raw attribution output for debugging.
+    import datetime
+
+    log_file_path = "attribution_log.txt"
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_content = (
+        f"\n{'='*30} Attribution Log Start (ID: {request_id}) {'='*30}\n"
+        f"Time: {timestamp}\n"
+        f"Present rubric indices: {present_indices}\n"
+        f"--- [1. Attribution Raw Output Text] ---\n{sampler_response.response_text}\n\n"
+        f"--- [2. Metadata] ---\n{json.dumps(sampler_response.response_metadata, indent=2)}\n\n"
+        f"--- [3. Full Prompt Sent to Attribution LLM] ---\n"
+        f"{json.dumps(sampler_response.actual_queried_message_list, indent=2, ensure_ascii=False)}\n"
+        f"{'='*30} Attribution Log End (ID: {request_id}) {'='*30}\n"
+    )
+    try:
+        with open(log_file_path, "a", encoding="utf-8") as f:
+            f.write(log_content)
+    except Exception as e:
+        print(f"[Log Error] Failed to write attribution log: {e}")
+
+    parsed = _parse_attribution_response(sampler_response.response_text, present_indices)
+    parsed_log_path = "attribution_parsed.txt"
+    try:
+        with open(parsed_log_path, "a", encoding="utf-8") as f_parsed:
+            log_entry = {
+                "timestamp": timestamp,
+                "request_id": request_id,
+                "parsed_dict": parsed,
+                "present_indices": present_indices,
+            }
+            f_parsed.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print(f"[Log Error] Failed to write attribution parsed log: {e}")
+
+    return parsed
 
 async def async_grade_single_example(
     prompt: List[Dict[str, str]], 
@@ -368,6 +502,12 @@ async def async_grade_single_example(
             print(f"[Log Error] Failed to write parsed log: {e}")
         # ===================================================
 
+        if os.getenv("ATTRIBUTION_ENABLE", "0") == "1":
+            try:
+                await async_attribute_response(response, llm_items, llm_results, request_id)
+            except Exception as e:
+                print(f"[Attribution Error] Failed to attribute rewards: {e}")
+
         for local_idx, global_idx in enumerate(llm_indices):
             grading_response_list[global_idx] = {"criteria_met": llm_results.get(local_idx + 1, False)}
 
@@ -405,7 +545,6 @@ async def compute_score(
     except Exception as e:
         print(f"[Rubric Error] compute_score failed: {e}")
         return 0.0
-
 
 
 
