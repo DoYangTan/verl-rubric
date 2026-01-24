@@ -3,9 +3,7 @@ pip install tensorboard
 pip install -U flashinfer-python
 pip install math-verify -U
 
-export CUDA_VISIBLE_DEVICES="0,1,2,3"
-
-NUM_GPUs=4
+NUM_GPUs=8
 EXP_NAME="rubrichub_v1_Medical_Qwen2.5-7B-Instruct_GRPO_highclip"
 PROJECT_NAME="rubrichub_v1_Medical"
 MODEL_PATH="/mnt/hdfs/__MERLIN_USER_DIR__/models/Qwen2.5-7B-Instruct"
@@ -24,8 +22,8 @@ infer_ppo_max_token_len=$((max_tokens * 1))
 max_num_batched_tokens=$((max_tokens * 1))
 clip_ratio_low=0.2
 clip_ratio_high=0.28 # clip high
-train_batch_size=128
-ppo_mini_batch_size=128
+train_batch_size=64
+ppo_mini_batch_size=32
 
 
 #############################
