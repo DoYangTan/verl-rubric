@@ -59,14 +59,14 @@ class DAPORewardManager(RewardManagerBase):
         response_str = await self.loop.run_in_executor(
             None, lambda: self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
         )
-        extra_reward_kwargs = (
-            {
-                "reward_router_address": self.reward_router_address,
-                "reward_model_tokenizer": self.reward_model_tokenizer,
-            }
-            if self.reward_router_address is not None
-            else {}
-        )
+        extra_reward_kwargs = {"response_tokenizer": self.tokenizer}
+        if self.reward_router_address is not None:
+            extra_reward_kwargs.update(
+                {
+                    "reward_router_address": self.reward_router_address,
+                    "reward_model_tokenizer": self.reward_model_tokenizer,
+                }
+            )
         if self.is_async_reward_score:
             result = await self.compute_score(
                 data_source=data_source,
@@ -110,5 +110,36 @@ class DAPORewardManager(RewardManagerBase):
             if self.overlong_buffer_cfg.log:
                 reward_extra_info["overlong_reward"] = overlong_reward
                 reward_extra_info["overlong"] = overlong_reward < 0
+                try:
+                    import json
+                    import datetime
+
+                    with open("overlong_debug.txt", "a", encoding="utf-8") as f:
+                        f.write(
+                            json.dumps(
+                                {
+                                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    "data_source": data_source,
+                                    "valid_response_length": int(valid_response_length),
+                                    "expected_len": int(expected_len),
+                                    "overlong_buffer_len": int(overlong_buffer_len),
+                                    "penalty_factor": float(overlong_penalty_factor),
+                                    "overlong_reward": float(overlong_reward),
+                                },
+                                ensure_ascii=True,
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+
+        reward_extra_info.setdefault("score", score)
+        reward_extra_info.setdefault("acc", score)
+        reward_extra_info.setdefault("attribution_substrings", None)
+        reward_extra_info.setdefault("attribution_token_indices", None)
+        reward_extra_info.setdefault("token_level_rewards", None)
+        if self.overlong_buffer_cfg is not None and self.overlong_buffer_cfg.log:
+            reward_extra_info.setdefault("overlong_reward", 0.0)
+            reward_extra_info.setdefault("overlong", False)
 
         return {"reward_score": reward, "reward_extra_info": reward_extra_info}

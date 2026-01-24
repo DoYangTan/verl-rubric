@@ -24,6 +24,8 @@ from collections import defaultdict
 from enum import Enum
 from typing import Any, Callable, Optional
 
+import json
+import os
 import numpy as np
 import torch
 from omegaconf import DictConfig
@@ -118,6 +120,26 @@ class AdvantageEstimator(str, Enum):
 
 
 ADV_ESTIMATOR_REGISTRY: dict[str, Any] = {}
+
+_debug_reward_flow_count = 0
+
+def _debug_reward_flow_log(tag: str, payload: dict) -> None:
+    if os.getenv("DEBUG_REWARD_FLOW", "0") != "1":
+        return
+    global _debug_reward_flow_count
+    try:
+        limit = int(os.getenv("DEBUG_REWARD_FLOW_LIMIT", "5"))
+    except ValueError:
+        limit = 5
+    if _debug_reward_flow_count >= limit:
+        return
+    _debug_reward_flow_count += 1
+    record = {"tag": tag, **payload}
+    try:
+        with open("reward_flow_debug.txt", "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=True) + "\n")
+    except Exception:
+        pass
 
 
 def register_adv_est(name_or_enum: str | AdvantageEstimator) -> Any:
@@ -353,6 +375,12 @@ def compute_grpo_outcome_advantage1_1(
     
     with torch.no_grad():
         bsz, seq_len = token_level_rewards.shape
+        if os.getenv("DEBUG_REWARD_FLOW", "0") == "1":
+            nonzero = int((token_level_rewards != 0).sum().item())
+            _debug_reward_flow_log(
+                "grpo_v1_1",
+                {"bsz": int(bsz), "seq_len": int(seq_len), "nonzero": nonzero},
+            )
 
         filled_rewards = token_level_rewards.clone()
         for i in range(bsz):
@@ -405,23 +433,24 @@ def compute_grpo_outcome_advantage1_2(
     with torch.no_grad():
         bsz, seq_len = token_level_rewards.shape
 
-        filled_rewards = token_level_rewards.clone()
+        processed_rewards = torch.zeros_like(token_level_rewards)
         for i in range(bsz):
             valid_len = int(response_mask[i].sum().item())
-            current_val = 0.0
-            for j in range(valid_len - 1, -1, -1):
-                if filled_rewards[i, j] != 0:
-                    current_val = filled_rewards[i, j]
-                filled_rewards[i, j] = current_val
-        
-        filled_rewards = filled_rewards * response_mask
+            running_sum = 0.0
+            for j in range(valid_len):
+                raw_new = token_level_rewards[i, j].item()
+                if raw_new != 0:
+                    running_sum += raw_new
+                processed_rewards[i, j] = running_sum
 
-        advantages = torch.zeros_like(filled_rewards)
+        processed_rewards = processed_rewards * response_mask
+
+        advantages = torch.zeros_like(processed_rewards)
         unique_indices = np.unique(index)
         
         for idx in unique_indices:
             group_mask = (index == idx)
-            group_rewards = filled_rewards[group_mask]
+            group_rewards = processed_rewards[group_mask]
             group_resp_mask = response_mask[group_mask]
             
             count_active = group_resp_mask.sum(dim=0)
@@ -457,6 +486,12 @@ def compute_grpo_outcome_advantage_v1_3(
     with torch.no_grad():
         bsz, seq_len = token_level_rewards.shape
         processed_rewards = torch.zeros_like(token_level_rewards)
+
+        if config is not None:
+            try:
+                decay_factor = float(config.get("grpo_v1_3_decay_factor", decay_factor))
+            except Exception:
+                pass
         
         for i in range(bsz):
             global_reward_sum = 0.0      

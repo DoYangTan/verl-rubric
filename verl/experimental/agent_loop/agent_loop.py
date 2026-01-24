@@ -13,9 +13,11 @@
 # limitations under the License.
 import asyncio
 import heapq
+import json
 import logging
 import os
 import random
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 from uuid import uuid4
@@ -38,6 +40,26 @@ from verl.protocol import DataProto
 from verl.single_controller.ray.base import RayResourcePool, RayWorkerGroup
 from verl.utils import hf_processor, hf_tokenizer
 from verl.utils.chat_template import initialize_system_prompt
+
+_debug_reward_flow_count = 0
+
+def _debug_reward_flow_log(tag: str, payload: dict) -> None:
+    if os.getenv("DEBUG_REWARD_FLOW", "0") != "1":
+        return
+    global _debug_reward_flow_count
+    try:
+        limit = int(os.getenv("DEBUG_REWARD_FLOW_LIMIT", "5"))
+    except ValueError:
+        limit = 5
+    if _debug_reward_flow_count >= limit:
+        return
+    _debug_reward_flow_count += 1
+    record = {"tag": tag, **payload}
+    try:
+        with open("reward_flow_debug.txt", "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=True) + "\n")
+    except Exception:
+        pass
 from verl.utils.dataset.rl_dataset import RLHFDataset, get_dataset_class
 from verl.utils.fs import copy_to_local
 from verl.utils.model import compute_position_id_with_mask
@@ -51,6 +73,12 @@ from verl.utils.transferqueue_utils import tqbridge
 from verl.workers.rollout.replica import TokenOutput, get_rollout_replica_class
 
 logger = logging.getLogger(__file__)
+
+
+def _as_object_array(values):
+    arr = np.empty(len(values), dtype=object)
+    arr[:] = values
+    return arr
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
@@ -127,6 +155,7 @@ class AgentLoopMetrics(BaseModel):
 
     generate_sequences: float = 0.0
     tool_calls: float = 0.0
+    reward: float = 0.0
 
 
 class AgentLoopOutput(BaseModel):
@@ -715,14 +744,20 @@ class AgentLoopWorker:
             non_tensor_batch = {
                 **{k: np.array([v]) for k, v in kwargs.items()},
                 "__num_turns__": np.array([output.num_turns]),
-                "tool_extra_fields": np.array([output.extra_fields], dtype=object),
+                "tool_extra_fields": _as_object_array([output.extra_fields]),
             }
 
             data = DataProto(
                 batch=batch,
                 non_tensor_batch=non_tensor_batch,
             )
+            start_time = time.perf_counter()
             result = await self.reward_loop_worker.compute_score.remote(data)
+            reward_elapsed = time.perf_counter() - start_time
+            if isinstance(output.metrics, dict):
+                output.metrics["reward"] = output.metrics.get("reward", 0.0) + reward_elapsed
+            else:
+                output.metrics.reward += reward_elapsed
             output.reward_score = result["reward_score"]
             output.extra_fields["reward_extra_info"] = result["reward_extra_info"]
 
@@ -756,7 +791,34 @@ class AgentLoopWorker:
         )
 
         scores = [input.reward_score for input in inputs]
-        if all(score is not None for score in scores):
+        reward_extra_infos = [input.extra_fields.get("reward_extra_info", {}) for input in inputs]
+        token_level_rewards_list = [info.get("token_level_rewards") for info in reward_extra_infos]
+
+        if any(r is not None for r in token_level_rewards_list):
+            rm_scores = torch.zeros_like(response_mask, dtype=torch.float32)
+            seq_count = 0
+            scalar_count = 0
+            for i, seq in enumerate(token_level_rewards_list):
+                valid_len = int(response_mask[i].sum().item())
+                if valid_len <= 0:
+                    continue
+                if isinstance(seq, (list, tuple, np.ndarray, torch.Tensor)):
+                    seq_tensor = torch.tensor(seq, dtype=torch.float32).flatten()
+                    if seq_tensor.numel() > 0:
+                        use_len = min(valid_len, seq_tensor.numel())
+                        rm_scores[i, :use_len] = seq_tensor[:use_len]
+                        seq_count += 1
+                        continue
+                score = scores[i]
+                if score is not None:
+                    rm_scores[i, valid_len - 1] = float(score)
+                    scalar_count += 1
+            batch["rm_scores"] = rm_scores
+            _debug_reward_flow_log(
+                "agent_loop_rm_scores",
+                {"batch_size": len(inputs), "seq_count": seq_count, "scalar_count": scalar_count},
+            )
+        elif all(score is not None for score in scores):
             prompt_length = prompt_ids.size(1)
             response_length = attention_mask[:, prompt_length:].sum(dim=1) - 1
             rm_scores = torch.zeros_like(response_mask, dtype=torch.float32)
@@ -768,15 +830,14 @@ class AgentLoopWorker:
         }
 
         # add reward_extra_info to non_tensor_batch
-        reward_extra_infos = [input.extra_fields.get("reward_extra_info", {}) for input in inputs]
-        reward_extra_keys = list(reward_extra_infos[0].keys())
+        reward_extra_keys = sorted({key for info in reward_extra_infos for key in info.keys()})
         for key in reward_extra_keys:
-            non_tensor_batch[key] = np.array([info[key] for info in reward_extra_infos])
+            non_tensor_batch[key] = _as_object_array([info.get(key) for info in reward_extra_infos])
 
         # Add multi_modal_inputs to non_tensor_batch if any samples have them
         multi_modal_inputs_list = [input.multi_modal_inputs for input in inputs]
         if any(mmi is not None for mmi in multi_modal_inputs_list):
-            non_tensor_batch["multi_modal_inputs"] = np.array(multi_modal_inputs_list, dtype=object)
+            non_tensor_batch["multi_modal_inputs"] = _as_object_array(multi_modal_inputs_list)
 
         metrics = [input.metrics.model_dump() for input in inputs]
         # Collect extra fields from all inputs and convert them to np.ndarray
@@ -791,7 +852,7 @@ class AgentLoopWorker:
         return DataProto(
             batch=batch,
             non_tensor_batch=non_tensor_batch,
-            meta_info={"metrics": metrics, "reward_extra_keys": reward_extra_keys},
+            meta_info={"metrics": metrics},
         )
 
     def create_transferqueue_client(
@@ -969,6 +1030,10 @@ class AgentLoopManager:
         timing["agent_loop/tool_calls/min"] = t_tool_calls.min()
         timing["agent_loop/tool_calls/max"] = t_tool_calls.max()
         timing["agent_loop/tool_calls/mean"] = t_tool_calls.mean()
+        t_reward = np.array([metric.get("reward", 0.0) for chunk in metrics for metric in chunk])
+        timing["agent_loop/reward/min"] = t_reward.min()
+        timing["agent_loop/reward/max"] = t_reward.max()
+        timing["agent_loop/reward/mean"] = t_reward.mean()
 
         # batch sequence generation is bounded by the slowest sample
         slowest = np.argmax(t_generate_sequences + t_tool_calls)
@@ -976,6 +1041,7 @@ class AgentLoopManager:
         prompt_length = output.batch["prompts"].shape[1]
         timing["agent_loop/slowest/generate_sequences"] = t_generate_sequences[slowest]
         timing["agent_loop/slowest/tool_calls"] = t_tool_calls[slowest]
+        timing["agent_loop/slowest/reward"] = t_reward[slowest]
         timing["agent_loop/slowest/prompt_length"] = attention_mask[:prompt_length].sum().item()
         timing["agent_loop/slowest/response_length"] = attention_mask[prompt_length:].sum().item()
 

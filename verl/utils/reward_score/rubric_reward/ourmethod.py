@@ -16,6 +16,26 @@ except ImportError:
 
 load_dotenv()
 
+_debug_reward_flow_count = 0
+
+def _debug_reward_flow_log(tag: str, payload: Dict[str, Any]) -> None:
+    if os.getenv("DEBUG_REWARD_FLOW", "0") != "1":
+        return
+    global _debug_reward_flow_count
+    try:
+        limit = int(os.getenv("DEBUG_REWARD_FLOW_LIMIT", "5"))
+    except ValueError:
+        limit = 5
+    if _debug_reward_flow_count >= limit:
+        return
+    _debug_reward_flow_count += 1
+    record = {"tag": tag, **payload}
+    try:
+        with open("reward_flow_debug.txt", "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=True) + "\n")
+    except Exception as e:
+        print(f"[Log Error] Failed to write reward flow log: {e}")
+
 @dataclass
 class RubricItem:
     criterion: str
@@ -214,12 +234,29 @@ The keys must be the rubric numbers provided, and the values must be the exact e
 If you cannot find evidence for a rubric, return an empty string for that key.
 Do not add any extra text.
 
-Example response:
+Example 1:
+<Response>
+The patient has chest pain and shortness of breath. Call emergency services immediately.
+</Response>
+<Rubrics>
+1. Advises calling emergency services.
+2. Mentions shortness of breath.
+</Rubrics>
 ```json
-{{
-  "1": "evidence text here",
-  "3": ""
-}}
+{{"1": "Call emergency services immediately", "2": "shortness of breath"}}
+```
+
+Example 2:
+<Response>
+This is likely a mild side effect and usually resolves on its own. Seek care if you develop hives or trouble breathing.
+</Response>
+<Rubrics>
+1. Says it is a mild side effect that resolves on its own.
+2. Provides a red-flag symptom such as hives or trouble breathing.
+3. Mentions fever.
+</Rubrics>
+```json
+{{"1": "mild side effect and usually resolves on its own", "2": "hives or trouble breathing", "3": ""}}
 ```
 
 <Response>
@@ -240,23 +277,26 @@ def _parse_presence_response(resp_text: str, expected_count: int) -> Dict[int, b
         for key, val in data.items():
             try:
                 idx = int(key)
+                if isinstance(val, bool):
+                    results[idx] = val
+                    continue
+                if isinstance(val, (int, float)) and val in (0, 1):
+                    results[idx] = bool(val)
+                    continue
                 if isinstance(val, str):
                     norm = val.strip().upper()
-                    if norm == "PRESENT":
+                    if norm in ("PRESENT", "TRUE", "YES", "Y", "T", "1"):
                         results[idx] = True
-                    elif norm == "NOT_PRESENT":
+                    elif norm in ("NOT_PRESENT", "FALSE", "NO", "N", "F", "0"):
                         results[idx] = False
             except (ValueError, TypeError):
                 continue
         return results
 
-    def _validate_count(results: Dict[int, bool]) -> bool:
-        if expected_count and len(results) != expected_count:
-            print(f"[grader debug] parsed count mismatch: expected={expected_count}, got={len(results)}")
-            print(resp_text)
-            # 修改点1
-            return False
-        return True
+    def _normalize_results(results: Dict[int, bool]) -> Dict[int, bool]:
+        if not expected_count:
+            return results
+        return {i: results.get(i, False) for i in range(1, expected_count + 1)}
 
     # Prefer fenced JSON block first.
     match = re.search(r"```json\s*(\{.*?\})\s*```", resp_text, re.DOTALL | re.IGNORECASE)
@@ -264,7 +304,7 @@ def _parse_presence_response(resp_text: str, expected_count: int) -> Dict[int, b
         try:
             data = json.loads(match.group(1))
             results = _coerce_results(data)
-            return results if _validate_count(results) else {}
+            return _normalize_results(results)
         except Exception:
             print("[grader debug] failed to parse fenced json block")
             print(resp_text)
@@ -281,8 +321,7 @@ def _parse_presence_response(resp_text: str, expected_count: int) -> Dict[int, b
     try:
         data = json.loads(cleaned)
         results = _coerce_results(data)
-        # 修改点2
-        return results if _validate_count(results) else {}
+        return _normalize_results(results)
     except Exception:
         print("[grader debug] failed to parse json object fallback")
         print(resp_text)
@@ -362,6 +401,72 @@ def _parse_attribution_response(resp_text: str, allowed_indices: List[int]) -> D
             results[idx] = ""
     return results
 
+def _find_substring_span(response: str, substring: str) -> Tuple[int, int] | None:
+    if not substring:
+        return None
+    start = response.find(substring)
+    if start < 0:
+        return None
+    end = start + len(substring)
+    return start, end
+
+def _map_substring_to_token_index(
+    response: str,
+    substring: str,
+    tokenizer,
+) -> int | None:
+    """Map substring to the last overlapping token index in the response."""
+    if tokenizer is None:
+        return None
+    span = _find_substring_span(response, substring)
+    if span is None:
+        return None
+    start, end = span
+    try:
+        encoded = tokenizer(response, add_special_tokens=False, return_offsets_mapping=True)
+        offsets = encoded.get("offset_mapping")
+    except Exception:
+        return None
+    if not offsets:
+        return None
+    last_idx = None
+    for i, (s, e) in enumerate(offsets):
+        if e > start and s < end:
+            last_idx = i
+    return last_idx
+
+def _build_token_level_rewards(
+    rubric_items: List[RubricItem],
+    grading_response_list: List[dict],
+    token_count: int,
+    token_indices_by_rubric: Dict[int, int],
+) -> List[float] | None:
+    if token_count <= 0:
+        return None
+    total_possible_points = sum(r.points for r in rubric_items if r.points > 0)
+    if total_possible_points == 0:
+        return None
+    achieved_points = 0.0
+    for item, g in zip(rubric_items, grading_response_list):
+        if g and g.get("criteria_met", False):
+            achieved_points += float(item.points)
+    if achieved_points <= 0:
+        return [0.0] * token_count
+    rewards = [0.0] * token_count
+    for idx, (item, g) in enumerate(zip(rubric_items, grading_response_list), start=1):
+        if not g or not g.get("criteria_met", False):
+            continue
+        contribution = float(item.points) / float(total_possible_points)
+        if contribution == 0:
+            continue
+        token_idx = token_indices_by_rubric.get(idx)
+        if token_idx is None or token_idx >= token_count:
+            token_idx = token_count - 1
+        if token_idx < 0:
+            continue
+        rewards[token_idx] += contribution
+    return rewards
+
 async def async_attribute_response(
     response: str,
     rubric_items: List[RubricItem],
@@ -418,10 +523,13 @@ async def async_grade_single_example(
     prompt: List[Dict[str, str]], 
     response: str,
     rubric_items: List[RubricItem],
-    grader_model
-) -> float:
+    grader_model,
+    response_tokenizer=None,
+) -> Tuple[float, Dict[str, Any]]:
     """Async scoring: Rule Check + Async LLM Grading"""
     grading_response_list = [None] * len(rubric_items)
+    reward_extra_info: Dict[str, Any] = {}
+    request_id = "na"
     
     rule_indices = []
     llm_indices = []
@@ -503,15 +611,57 @@ async def async_grade_single_example(
         # ===================================================
 
         if os.getenv("ATTRIBUTION_ENABLE", "0") == "1":
+            attribution_substrings = {}
+            attribution_token_indices = {}
             try:
-                await async_attribute_response(response, llm_items, llm_results, request_id)
+                attribution_local = await async_attribute_response(
+                    response, llm_items, llm_results, request_id
+                )
+                if attribution_local:
+                    for local_idx, substring in attribution_local.items():
+                        if local_idx <= 0 or local_idx > len(llm_indices):
+                            continue
+                        global_idx = llm_indices[local_idx - 1] + 1
+                        attribution_substrings[global_idx] = substring
+                        token_idx = _map_substring_to_token_index(
+                            response, substring, response_tokenizer
+                        )
+                        if token_idx is not None:
+                            attribution_token_indices[global_idx] = token_idx
             except Exception as e:
                 print(f"[Attribution Error] Failed to attribute rewards: {e}")
+            # Always set these keys so we can fallback missing rubrics to the last token.
+            reward_extra_info["attribution_substrings"] = attribution_substrings
+            reward_extra_info["attribution_token_indices"] = attribution_token_indices
 
         for local_idx, global_idx in enumerate(llm_indices):
             grading_response_list[global_idx] = {"criteria_met": llm_results.get(local_idx + 1, False)}
 
-    return calculate_score(rubric_items, grading_response_list)
+    if response_tokenizer is not None:
+        try:
+            token_count = len(response_tokenizer(response, add_special_tokens=False)["input_ids"])
+        except Exception:
+            token_count = 0
+        token_level_rewards = _build_token_level_rewards(
+            rubric_items,
+            grading_response_list,
+            token_count,
+            reward_extra_info.get("attribution_token_indices", {}),
+        )
+        if token_level_rewards:
+            reward_extra_info["token_level_rewards"] = token_level_rewards
+            nonzero_count = sum(1 for r in token_level_rewards if r)
+            _debug_reward_flow_log(
+                "token_level_rewards",
+                {
+                    "request_id": request_id,
+                    "token_count": len(token_level_rewards),
+                    "nonzero": nonzero_count,
+                    "reward_sum": float(sum(token_level_rewards)),
+                },
+            )
+
+    return calculate_score(rubric_items, grading_response_list), reward_extra_info
 
 async def compute_score(
     solution_str: str,
@@ -534,20 +684,18 @@ async def compute_score(
         if not input_prompt:
             return 0.0
         
-        score = await async_grade_single_example(
+        response_tokenizer = kwargs.get("response_tokenizer")
+        score, reward_extra_info = await async_grade_single_example(
             input_prompt, 
             solution_str, 
             rubric_items, 
-            grader
+            grader,
+            response_tokenizer=response_tokenizer,
         )
+        if reward_extra_info:
+            return {"score": float(score), **reward_extra_info}
         return float(score)
     
     except Exception as e:
         print(f"[Rubric Error] compute_score failed: {e}")
         return 0.0
-
-
-
-
-
-

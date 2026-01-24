@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import json
 import logging
 import os
 
@@ -34,6 +35,32 @@ from .reward_model import RewardModelManager
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+
+_debug_reward_flow_count = 0
+
+
+def _as_object_array(values):
+    arr = np.empty(len(values), dtype=object)
+    arr[:] = values
+    return arr
+
+def _debug_reward_flow_log(tag: str, payload: dict) -> None:
+    if os.getenv("DEBUG_REWARD_FLOW", "0") != "1":
+        return
+    global _debug_reward_flow_count
+    try:
+        limit = int(os.getenv("DEBUG_REWARD_FLOW_LIMIT", "5"))
+    except ValueError:
+        limit = 5
+    if _debug_reward_flow_count >= limit:
+        return
+    _debug_reward_flow_count += 1
+    record = {"tag": tag, **payload}
+    try:
+        with open("reward_flow_debug.txt", "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=True) + "\n")
+    except Exception as e:
+        logger.warning(f"Failed to write reward flow log: {e}")
 
 
 @ray.remote
@@ -279,16 +306,44 @@ class RewardLoopManager:
         prompt_length = data.batch["prompts"].size(1)
         valid_response_length = data.batch["attention_mask"][:, prompt_length:].sum(dim=1)
         rm_scores = torch.zeros_like(data.batch["responses"], dtype=torch.float32)
-        rm_scores[torch.arange(rm_scores.size(0)), valid_response_length - 1] = torch.tensor(
-            scores, dtype=torch.float32
+
+        seq_count = 0
+        scalar_count = 0
+        for i, output in enumerate(outputs_flat):
+            reward_score = output.get("reward_score")
+            extra_info = output.get("reward_extra_info", {})
+            seq = None
+            if isinstance(reward_score, (list, tuple, np.ndarray, torch.Tensor)):
+                seq = reward_score
+            elif isinstance(extra_info.get("token_level_rewards"), (list, tuple, np.ndarray, torch.Tensor)):
+                seq = extra_info.get("token_level_rewards")
+
+            valid_len = int(valid_response_length[i].item())
+            if valid_len <= 0:
+                continue
+
+            if seq is not None:
+                seq_count += 1
+                seq_tensor = torch.tensor(seq, dtype=torch.float32).flatten()
+                if seq_tensor.numel() == 0:
+                    continue
+                use_len = min(valid_len, seq_tensor.numel())
+                rm_scores[i, :use_len] = seq_tensor[:use_len]
+            else:
+                scalar_count += 1
+                rm_scores[i, valid_len - 1] = float(reward_score)
+
+        _debug_reward_flow_log(
+            "reward_loop_rm_scores",
+            {"batch_size": len(outputs_flat), "seq_count": seq_count, "scalar_count": scalar_count},
         )
         batch = TensorDict({"rm_scores": rm_scores}, batch_size=len(data))
 
         reward_extra_infos = [output.get("reward_extra_info", {}) for output in outputs_flat]
-        reward_extra_keys = list(reward_extra_infos[0].keys())
+        reward_extra_keys = sorted({key for info in reward_extra_infos for key in info.keys()})
         non_tensor_batch = {}
         for key in reward_extra_keys:
-            non_tensor_batch[key] = np.array([info[key] for info in reward_extra_infos])
+            non_tensor_batch[key] = _as_object_array([info.get(key) for info in reward_extra_infos])
 
         if self.reward_model_manager is not None:
             self.reward_model_manager.sleep()

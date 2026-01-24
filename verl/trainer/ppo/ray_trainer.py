@@ -1462,6 +1462,9 @@ class RayPPOTrainer:
                             gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch_output)
 
                         timing_raw.update(gen_batch_output.meta_info["timing"])
+                        if "agent_loop/reward/mean" in timing_raw and "reward_loop" not in timing_raw:
+                            # Alias reward-loop timing for easier wandb filtering.
+                            timing_raw["reward_loop"] = timing_raw["agent_loop/reward/mean"]
                         gen_batch_output.meta_info.pop("timing", None)
 
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:

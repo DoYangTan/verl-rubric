@@ -99,6 +99,7 @@ class DAPORewardManager(AbstractRewardManager):
                 solution_str=response_str,
                 ground_truth=ground_truth,
                 extra_info=extra_info,
+                response_tokenizer=self.tokenizer,
             )
 
             score: float
@@ -123,6 +124,28 @@ class DAPORewardManager(AbstractRewardManager):
                 if self.overlong_buffer_cfg.log:
                     reward_extra_info["overlong_reward"].append(overlong_reward)
                     reward_extra_info["overlong"].append(overlong_reward < 0)
+                    try:
+                        import json
+                        import datetime
+
+                        with open("overlong_debug.txt", "a", encoding="utf-8") as f:
+                            f.write(
+                                json.dumps(
+                                    {
+                                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                        "data_source": data_source,
+                                        "valid_response_length": int(valid_response_length),
+                                        "expected_len": int(expected_len),
+                                        "overlong_buffer_len": int(overlong_buffer_len),
+                                        "penalty_factor": float(overlong_penalty_factor),
+                                        "overlong_reward": float(overlong_reward),
+                                    },
+                                    ensure_ascii=True,
+                                )
+                                + "\n"
+                            )
+                    except Exception:
+                        pass
 
             reward_tensor[i, valid_response_length - 1] = reward
 
@@ -139,6 +162,16 @@ class DAPORewardManager(AbstractRewardManager):
                         print(f"[{key}]", value)
                 else:
                     print("[score]", score)
+
+        # Ensure consistent reward_extra_info keys across batches to avoid concat errors.
+        reward_extra_info.setdefault("score", [])
+        reward_extra_info.setdefault("acc", [])
+        reward_extra_info.setdefault("attribution_substrings", [])
+        reward_extra_info.setdefault("attribution_token_indices", [])
+        reward_extra_info.setdefault("token_level_rewards", [])
+        if self.overlong_buffer_cfg is not None and self.overlong_buffer_cfg.log:
+            reward_extra_info.setdefault("overlong_reward", [])
+            reward_extra_info.setdefault("overlong", [])
 
         if return_dict:
             return {

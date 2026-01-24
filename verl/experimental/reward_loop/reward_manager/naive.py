@@ -55,14 +55,14 @@ class NaiveRewardManager(RewardManagerBase):
             None, lambda: self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
         )
 
-        extra_reward_kwargs = (
-            {
-                "reward_router_address": self.reward_router_address,
-                "reward_model_tokenizer": self.reward_model_tokenizer,
-            }
-            if self.reward_router_address is not None
-            else {}
-        )
+        extra_reward_kwargs = {"response_tokenizer": self.tokenizer}
+        if self.reward_router_address is not None:
+            extra_reward_kwargs.update(
+                {
+                    "reward_router_address": self.reward_router_address,
+                    "reward_model_tokenizer": self.reward_model_tokenizer,
+                }
+            )
         if self.is_async_reward_score:
             result = await self.compute_score(
                 data_source=data_source,
@@ -94,6 +94,11 @@ class NaiveRewardManager(RewardManagerBase):
             score = result
             reward_extra_info["acc"] = score
 
+        reward_extra_info["score"] = score
+        reward_extra_info.setdefault("acc", score)
+        reward_extra_info.setdefault("attribution_substrings", None)
+        reward_extra_info.setdefault("attribution_token_indices", None)
+        reward_extra_info.setdefault("token_level_rewards", None)
         reward = score
 
         return {"reward_score": reward, "reward_extra_info": reward_extra_info}

@@ -8,7 +8,16 @@
 **/playground
 **/wandb
 
+# 忽略过程日志
+attribution_log.txt
+attribution_parsed.txt
+grader_debug_log.txt
+overlong_debug.txt
+parsed_results.txt
+
 # 忽略模型权重
+tmp_ray/
+
 model_weight/
 *.pth
 *.bin
@@ -149,4 +158,7 @@ ENV/
 logs
 log
 outputs
-.history
+.history*.txt
+*.txt
+*.docx
+报告/

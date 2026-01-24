@@ -83,6 +83,9 @@ algorithm:
   # Whether to normalize advantages by std (specific to GRPO)
   norm_adv_by_std_in_grpo: True
 
+  # TTL decay factor for GRPO v1.3 rewards
+  grpo_v1_3_decay_factor: 0.95
+
   # Whether to enable in-reward KL penalty
   use_kl_in_reward: False
 
