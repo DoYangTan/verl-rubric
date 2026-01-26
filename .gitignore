@@ -17,9 +17,6 @@ attribution_parsed.txt
 grader_debug_log.txt
 overlong_debug.txt
 parsed_results.txt
-*.log
-logs
-log
 outputs
 *.docx
 报告/
@@ -34,8 +31,10 @@ model_weight/
 *.parquet
 # 忽略.whl文件
 *.whl
-# 忽略日志和缓存
-log/
+# 忽略log目录下的所有文件，保留.gitkeep
+log/*
+*.log
+!log/.gitkeep
 __pycache__/
 *.pyc
 # 忽略 wandb 目录
