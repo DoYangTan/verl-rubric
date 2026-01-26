@@ -5,7 +5,7 @@ from huggingface_hub import snapshot_download
 proxy_url = "http://127.0.0.1:10086"
 os.environ["http_proxy"] = proxy_url
 os.environ["https_proxy"] = proxy_url
-print(f"🌍 已设置代理: {proxy_url}")
+print(f"🌍proxy: {proxy_url}")
 
 # Model configuration
 model_id = "openai/gpt-oss-20b"
