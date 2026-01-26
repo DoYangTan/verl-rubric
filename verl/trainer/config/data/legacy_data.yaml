@@ -1,0 +1,119 @@
+# Format checks enforced on CI:
+# 1. Comments must appear above each field.
+# 2. There must be a blank line between each field.
+# 3. Inline comments (after a field on the same line) are not allowed.
+# 4. Indentation level is respected for nested fields.
+
+# Tokenizer path for data loading
+tokenizer: null
+
+# Whether to use shared memory for dataset caching
+use_shm: false
+
+# Training data files
+train_files: ~/data/rlhf/gsm8k/train.parquet
+
+# Validation data files
+val_files: ~/data/rlhf/gsm8k/test.parquet
+
+# Max training samples (-1 means all)
+train_max_samples: -1
+
+# Max validation samples (-1 means all)
+val_max_samples: -1
+
+# Prompt field key
+prompt_key: prompt
+
+# Reward function key in data
+reward_fn_key: data_source
+
+# Max prompt length
+max_prompt_length: 512
+
+# Max response length
+max_response_length: 512
+
+# Training batch size
+train_batch_size: 1024
+
+# Validation batch size
+val_batch_size: null
+
+# Tool config path for multi-turn rollouts
+tool_config_path: ${oc.select:actor_rollout_ref.rollout.multi_turn.tool_config_path,null}
+
+# Whether to return raw input ids
+return_raw_input_ids: false
+
+# Whether to return raw chat
+return_raw_chat: true
+
+# Whether to return full prompt
+return_full_prompt: false
+
+# Whether to shuffle training data
+shuffle: true
+
+# Random seed for shuffling
+seed: null
+
+# Number of dataloader workers
+dataloader_num_workers: 8
+
+# Image patch size for vision models
+image_patch_size: 14
+
+# Whether to shuffle validation data
+validation_shuffle: false
+
+# Whether to filter overlong prompts
+filter_overlong_prompts: false
+
+# Worker count for overlong prompt filtering
+filter_overlong_prompts_workers: 1
+
+# Truncation behavior
+truncation: error
+
+# Image field key
+image_key: images
+
+# Video field key
+video_key: videos
+
+# Whether to trust remote code
+trust_remote_code: false
+
+# Custom dataset class config
+custom_cls:
+
+  # Python path to custom class
+  path: null
+
+  # Class name for custom dataset
+  name: null
+
+# Whether to return multimodal inputs
+return_multi_modal_inputs: true
+
+# Sampler class config
+sampler:
+
+  # Python path to sampler class
+  class_path: null
+
+  # Class name for sampler
+  class_name: null
+
+# Datagen class config
+datagen:
+
+  # Python path to datagen class
+  path: null
+
+  # Class name for datagen
+  name: null
+
+# Extra kwargs for chat template
+apply_chat_template_kwargs: {}
