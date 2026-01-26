@@ -9,8 +9,8 @@
 **/wandb
 
 # ======begin verl-rubric===== #
-# # dotenv
-# .env
+# dotenv
+.env
 # 忽略过程日志
 attribution_log.txt
 attribution_parsed.txt
