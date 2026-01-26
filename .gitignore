@@ -8,36 +8,42 @@
 **/playground
 **/wandb
 
+# ======begin verl-rubric===== #
+# # dotenv
+# .env
 # 忽略过程日志
 attribution_log.txt
 attribution_parsed.txt
 grader_debug_log.txt
 overlong_debug.txt
 parsed_results.txt
-
-# 忽略模型权重
+*.log
+logs
+log
+outputs
+*.docx
+报告/
+# 忽略ray临时文件
 tmp_ray/
-
+# 忽略模型权重
 model_weight/
 *.pth
 *.bin
 *.safetensors
-
 # 忽略数据集
-data/
 *.parquet
-
+# 忽略.whl文件
+*.whl
 # 忽略日志和缓存
 log/
 __pycache__/
 *.pyc
-
 # 忽略 wandb 目录
 wandb/
-
 # 忽略 IDE 配置文件
 .idea/
 .vscode/
+# ======end verl-rubric===== #
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -121,9 +127,6 @@ target/
 # celery beat schedule file
 celerybeat-schedule
 
-# dotenv
-.env
-
 # virtualenv
 venv/
 .venv/
@@ -153,12 +156,3 @@ ENV/
 # data
 *.parquet
 
-
-# local logs
-logs
-log
-outputs
-.history*.txt
-*.txt
-*.docx
-报告/
