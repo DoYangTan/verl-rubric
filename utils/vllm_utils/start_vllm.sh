@@ -1,12 +1,12 @@
 #!/bin/bash
 
-GPU_ID=8
+GPU_ID=2
 PORT=8002
 MODEL_PATH="model_weight/openai/gpt-oss-20b"
 SERVED_NAME="gpt-oss-20b"
-GPU_UTIL=0.95
+GPU_UTIL=0.4
 TP_SIZE=1
-LOG_FILE="vllm_server_${PORT}.log"
+LOG_FILE="log/vllm_server_${PORT}.log"
 
 unset http_proxy https_proxy all_proxy
 echo "Proxy settings cleared."
