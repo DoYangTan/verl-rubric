@@ -39,7 +39,7 @@ python3 -m verl.trainer.main_ppo \
     +reward_model.reward_kwargs.overlong_buffer_cfg.enable=${ENABLE_OVERLONG_BUFFER} \
     +reward_model.reward_kwargs.overlong_buffer_cfg.len=${OVERLONG_BUFFER_LEN} \
     +reward_model.reward_kwargs.overlong_buffer_cfg.penalty_factor=${OVERLONG_BUFFER_PENALTY_FACTOR} \
-    +reward_model.reward_kwargs.overlong_buffer_cfg.log=True \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.log=False \
     +reward_model.reward_kwargs.max_resp_len=${MAX_RESPONSE_LENGTH} \
     custom_reward_function.path=verl/utils/reward_score/rubric_reward/rurbichub_v1_Medical.py \
     custom_reward_function.name=compute_score \

@@ -39,7 +39,7 @@ python3 -m verl.trainer.main_ppo \
     +reward_model.reward_kwargs.overlong_buffer_cfg.enable=${ENABLE_OVERLONG_BUFFER} \
     +reward_model.reward_kwargs.overlong_buffer_cfg.len=${OVERLONG_BUFFER_LEN} \
     +reward_model.reward_kwargs.overlong_buffer_cfg.penalty_factor=${OVERLONG_BUFFER_PENALTY_FACTOR} \
-    +reward_model.reward_kwargs.overlong_buffer_cfg.log=True \
+    +reward_model.reward_kwargs.overlong_buffer_cfg.log=False \
     +reward_model.reward_kwargs.max_resp_len=${MAX_RESPONSE_LENGTH} \
     custom_reward_function.path=verl/utils/reward_score/rubric_reward/rurbichub_v1_Medical.py \
     custom_reward_function.name=compute_score \
@@ -87,8 +87,8 @@ python3 -m verl.trainer.main_ppo \
     critic.model.use_remove_padding=True \
     critic.model.enable_gradient_checkpointing=True \
     critic.optim.lr=1e-5 \
-    critic.model.fsdp_config.param_offload=True \
-    critic.model.fsdp_config.optimizer_offload=True \
+    critic.model.fsdp_config.param_offload=False \
+    critic.model.fsdp_config.optimizer_offload=False \
     critic.ppo_max_token_len_per_gpu=${ACTOR_PPO_MAX_TOKEN_LEN} \
     algorithm.use_kl_in_reward=False \
     trainer.critic_warmup=0 \
@@ -100,5 +100,5 @@ python3 -m verl.trainer.main_ppo \
     trainer.n_gpus_per_node=${NUM_GPUS} \
     trainer.nnodes=1 \
     trainer.save_freq=10 \
-    trainer.test_freq=10 \
+    trainer.test_freq=5 \
     trainer.total_epochs=15 $@
