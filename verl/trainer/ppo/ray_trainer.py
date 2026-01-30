@@ -184,6 +184,64 @@ def compute_response_mask(data: DataProto):
     return attention_mask[:, -response_length:]
 
 
+def _build_token_level_rewards_dict(
+    reward_components,
+    response_mask: torch.Tensor,
+    dtype: torch.dtype,
+    reward_extra_infos_dict: Optional[dict] = None,
+):
+    if isinstance(reward_components, np.ndarray):
+        components_list = reward_components.tolist()
+    elif isinstance(reward_components, list):
+        components_list = reward_components
+    elif isinstance(reward_components, str):
+        try:
+            parsed = json.loads(reward_components)
+            components_list = [parsed]
+        except Exception:
+            components_list = None
+    else:
+        components_list = None
+
+    bsz, seq_len = response_mask.shape
+    if components_list is None and reward_extra_infos_dict:
+        components_list = [None] * bsz
+        for key in ("rule_reward", "llm_reward"):
+            values = reward_extra_infos_dict.get(key)
+            if values is None:
+                continue
+            if isinstance(values, np.ndarray):
+                values = values.tolist()
+            if not isinstance(values, list) or len(values) != bsz:
+                continue
+            for i in range(bsz):
+                if components_list[i] is None:
+                    components_list[i] = {}
+                components_list[i][key] = values[i]
+
+    if not components_list or len(components_list) != bsz:
+        return None
+
+    device = response_mask.device
+    valid_lens = response_mask.sum(dim=-1).to(torch.long).tolist()
+    rewards_dict: dict[str, torch.Tensor] = {}
+
+    for i, comp in enumerate(components_list):
+        if not isinstance(comp, dict):
+            continue
+        last_idx = int(valid_lens[i]) - 1
+        if last_idx < 0:
+            continue
+        for key, value in comp.items():
+            if value is None:
+                continue
+            if key not in rewards_dict:
+                rewards_dict[key] = torch.zeros((bsz, seq_len), device=device, dtype=dtype)
+            rewards_dict[key][i, last_idx] = float(value)
+
+    return rewards_dict or None
+
+
 def compute_advantage(
     data: DataProto,
     adv_estimator: AdvantageEstimator,
@@ -248,8 +306,23 @@ def compute_advantage(
     else:
         # handle all other adv estimator type other than GAE and GRPO
         adv_estimator_fn = core_algos.get_adv_estimator_fn(adv_estimator)
+        adv_name = adv_estimator.value if hasattr(adv_estimator, "value") else adv_estimator
+        token_level_rewards = data.batch["token_level_rewards"]
+        if adv_name == "gdpo":
+            token_level_rewards_dict = None
+            if "token_level_rewards_dict" in data.batch:
+                token_level_rewards_dict = data.batch["token_level_rewards_dict"]
+            else:
+                token_level_rewards_dict = _build_token_level_rewards_dict(
+                    data.non_tensor_batch.get("reward_components"),
+                    data.batch["response_mask"],
+                    token_level_rewards.dtype,
+                    reward_extra_infos_dict=data.non_tensor_batch,
+                )
+            if token_level_rewards_dict is not None:
+                token_level_rewards = token_level_rewards_dict
         adv_kwargs = {
-            "token_level_rewards": data.batch["token_level_rewards"],
+            "token_level_rewards": token_level_rewards,
             "response_mask": data.batch["response_mask"],
             "config": config,
         }
@@ -1609,6 +1682,15 @@ class RayPPOTrainer:
 
                         if reward_extra_infos_dict:
                             batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
+
+                        component_rewards = _build_token_level_rewards_dict(
+                            reward_extra_infos_dict.get("reward_components") if reward_extra_infos_dict else None,
+                            batch.batch["response_mask"],
+                            batch.batch["token_level_scores"].dtype,
+                            reward_extra_infos_dict=reward_extra_infos_dict,
+                        )
+                        if component_rewards is not None:
+                            batch.non_tensor_batch["token_level_rewards_dict"] = component_rewards
 
                         # compute rewards. apply_kl_penalty if available
                         if self.config.algorithm.use_kl_in_reward:

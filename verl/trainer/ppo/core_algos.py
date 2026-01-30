@@ -22,7 +22,7 @@ __all__ = ["register_adv_est", "get_adv_estimator_fn", "AdvantageEstimator"]
 
 from collections import defaultdict
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
 import json
 import os
@@ -359,6 +359,75 @@ def compute_grpo_outcome_advantage(
 
     return scores, scores
 
+"""
+    zchen
+"""
+@register_adv_est("gdpo")
+def compute_gdpo_outcome_advantage(
+    token_level_rewards: Union[torch.Tensor, Dict[str, torch.Tensor]], 
+    response_mask: torch.Tensor,
+    index: np.ndarray,
+    epsilon: float = 1e-6,
+    norm_adv_by_std_in_grpo: bool = True,
+    config: Optional[AlgoConfig] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if config is not None:
+        norm_adv_by_std_in_grpo = config.get("norm_adv_by_std_in_grpo", norm_adv_by_std_in_grpo)
+
+    if isinstance(token_level_rewards, torch.Tensor):
+        rewards_dict = {"default_reward": token_level_rewards}
+    elif isinstance(token_level_rewards, dict):
+        rewards_dict = token_level_rewards
+    else:
+        raise ValueError(f"GDPO expects token_level_rewards to be Dict or Tensor, got {type(token_level_rewards)}")
+
+    bsz = response_mask.shape[0]
+    device = response_mask.device
+    first_reward = next(iter(rewards_dict.values()))
+    aggregated_advantages = torch.zeros(bsz, device=device, dtype=first_reward.dtype)
+
+    _debug_reward_flow_log(
+        "gdpo_adv_inputs",
+        {"reward_keys": list(rewards_dict.keys()), "bsz": int(bsz)},
+    )
+
+    with torch.no_grad():
+        for _name, reward_tensor in rewards_dict.items():
+            scores = (reward_tensor * response_mask).sum(dim=-1)
+            id2score = defaultdict(list)
+            id2mean = {}
+            id2std = {}
+
+            for i in range(bsz):
+                id2score[index[i]].append(scores[i])
+
+            for idx in id2score:
+                if len(id2score[idx]) == 1:
+                    id2mean[idx] = torch.tensor(0.0, device=device, dtype=scores.dtype)
+                    id2std[idx] = torch.tensor(1.0, device=device, dtype=scores.dtype)
+                elif len(id2score[idx]) > 1:
+                    scores_tensor = torch.stack(id2score[idx])
+                    id2mean[idx] = torch.mean(scores_tensor)
+                    id2std[idx] = torch.std(scores_tensor)
+                else:
+                    raise ValueError(f"no score in prompt index: {idx}")
+
+            current_adv = torch.zeros_like(scores)
+            for i in range(bsz):
+                if norm_adv_by_std_in_grpo:
+                    current_adv[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
+                else:
+                    current_adv[i] = scores[i] - id2mean[index[i]]
+
+            aggregated_advantages += current_adv
+
+        batch_mean = aggregated_advantages.mean()
+        batch_std = aggregated_advantages.std()
+        final_advantages = (aggregated_advantages - batch_mean) / (batch_std + epsilon)
+
+    final_advantages = final_advantages.unsqueeze(-1) * response_mask
+
+    return final_advantages, final_advantages
 
 """
     zchen
