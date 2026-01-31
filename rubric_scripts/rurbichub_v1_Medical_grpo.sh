@@ -4,7 +4,7 @@
 [ -f ".env" ] && set -a && . .env && set +a
 
 # configurable experiment 
-EXP_NAME="baseline_GRPO_qwen2.5-7b_oss-120b"
+EXP_NAME="baseline_GRPO"
 PROJECT_NAME="rubrichub_v1_Medical"
 
 # configurable parameters
