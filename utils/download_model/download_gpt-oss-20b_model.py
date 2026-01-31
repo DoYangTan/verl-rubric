@@ -1,11 +1,5 @@
-import os
 import time
 from huggingface_hub import snapshot_download
-
-proxy_url = "http://127.0.0.1:10086"
-os.environ["http_proxy"] = proxy_url
-os.environ["https_proxy"] = proxy_url
-print(f"🌍proxy: {proxy_url}")
 
 # Model configuration
 model_id = "openai/gpt-oss-20b"
@@ -23,7 +17,7 @@ while retry_count < max_retries:
             local_dir=local_dir,
             local_dir_use_symlinks=False,
             resume_download=True,
-            max_workers=4  # Reduced concurrency for stability
+            max_workers=4,
         )
         
         print(f"\nDownload success! Saved to: {path}")

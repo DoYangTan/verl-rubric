@@ -1,13 +1,7 @@
-import os
 import time
 from huggingface_hub import snapshot_download
 
-# 配置代理
-proxy_url = "http://127.0.0.1:10086"
-os.environ["http_proxy"] = proxy_url
-os.environ["https_proxy"] = proxy_url
-
-# 配置模型 (Instruct 版本)
+# Model configuration (Instruct)
 model_id = "Qwen/Qwen2.5-3B-Instruct"
 local_dir = "model_weight/Qwen/Qwen2.5-3B-Instruct"
 
