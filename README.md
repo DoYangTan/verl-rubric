@@ -30,3 +30,9 @@ cd vllm_fowarder
 # change ip.txt
 nohup uvicorn vllm_forwarder.app:app --host 0.0.0.0 --port 9099 --workers 4 > ../log/forwarder.log 2>&1 &
 ```
+## 解耦val和train阶段的VLLM_TEMPERATURE
+```
+# .env 保证val-score step0一致
+VLLM_TEMPERATURE=1.0
+VLLM_TEMPERATURE_VAL=0
+```
