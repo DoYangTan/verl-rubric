@@ -99,10 +99,14 @@ class AsyncVLLMSampler:
         return selected_url
 
     async def __call__(self, message_list: List[Dict[str, str]]) -> SamplerResponse:
+        try:
+            temperature = float(os.getenv("VLLM_TEMPERATURE", "1.0"))
+        except (TypeError, ValueError):
+            temperature = 1.0
         payload = {
             "model": self.model,
             "messages": message_list,
-            "temperature": 1.0,
+            "temperature": temperature,
             "max_tokens": 4096
         }
 
