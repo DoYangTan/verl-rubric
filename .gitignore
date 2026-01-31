@@ -9,6 +9,8 @@
 **/wandb
 
 # ======begin verl-rubric===== #
+# diy
+utils/vllm_utils/start_vllm.sh
 # dotenv
 .env
 # 忽略过程日志
