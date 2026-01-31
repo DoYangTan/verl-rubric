@@ -23,6 +23,8 @@ MAX_NUM_BATCHED_TOKENS=$((MAX_TOKENS * 1))
 #############################
 set -x
 
+VAL_ONLY=${VAL_ONLY:-False}
+
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=gae \
     data.train_files="${TRAIN_FILE}" \
@@ -72,11 +74,11 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.temperature=1.0 \
     actor_rollout_ref.rollout.top_p=1.0 \
     actor_rollout_ref.rollout.top_k=-1 \
-    actor_rollout_ref.rollout.val_kwargs.temperature=1.0 \
+    actor_rollout_ref.rollout.val_kwargs.temperature=0 \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.7 \
     actor_rollout_ref.rollout.val_kwargs.top_k=-1 \
     actor_rollout_ref.rollout.val_kwargs.n=1 \
-    actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=${USE_DYNAMIC_BSZ} \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${INFER_PPO_MAX_TOKEN_LEN} \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=${USE_DYNAMIC_BSZ} \
@@ -101,4 +103,5 @@ python3 -m verl.trainer.main_ppo \
     trainer.nnodes=1 \
     trainer.save_freq=10 \
     trainer.test_freq=5 \
+    trainer.val_only=${VAL_ONLY} \
     trainer.total_epochs=15 $@

@@ -464,6 +464,7 @@ class AgentLoopWorker:
         if batch.meta_info.get("validate", False):
             sampling_params["top_p"] = config.val_kwargs.top_p
             sampling_params["temperature"] = config.val_kwargs.temperature
+        is_validate = bool(batch.meta_info.get("validate", False))
 
         # by default, we assume it's a single turn agent
         if "agent_name" not in batch.non_tensor_batch:
@@ -499,6 +500,8 @@ class AgentLoopWorker:
         for i in range(len(batch)):
             trace_this_sample = i in traced_indices
             kwargs = {k: v[i] for k, v in batch.non_tensor_batch.items()}
+            # Make validation flag available to reward computation (e.g., val-only grader temperature).
+            kwargs["_validate"] = is_validate
             tasks.append(
                 asyncio.create_task(
                     self._run_agent_loop(sampling_params, trajectory_info[i], trace=trace_this_sample, **kwargs)
@@ -741,8 +744,9 @@ class AgentLoopWorker:
                 },
                 batch_size=1,
             )
+            is_validate = bool(kwargs.get("_validate", False))
             non_tensor_batch = {
-                **{k: np.array([v]) for k, v in kwargs.items()},
+                **{k: np.array([v]) for k, v in kwargs.items() if k != "_validate"},
                 "__num_turns__": np.array([output.num_turns]),
                 "tool_extra_fields": _as_object_array([output.extra_fields]),
             }
@@ -750,6 +754,7 @@ class AgentLoopWorker:
             data = DataProto(
                 batch=batch,
                 non_tensor_batch=non_tensor_batch,
+                meta_info={"validate": is_validate},
             )
             start_time = time.perf_counter()
             result = await self.reward_loop_worker.compute_score.remote(data)

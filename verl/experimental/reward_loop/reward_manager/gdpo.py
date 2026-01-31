@@ -54,6 +54,7 @@ class GDPORewardManager(RewardManagerBase):
         data_source = data_item.non_tensor_batch["data_source"]
         ground_truth = data_item.non_tensor_batch["reward_model"]["ground_truth"]
         extra_info = data_item.non_tensor_batch.get("extra_info", {})
+        is_validate = bool(getattr(data_item, "meta_info", {}).get("validate", False))
 
         response_str = await self.loop.run_in_executor(
             None, lambda: self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
@@ -72,6 +73,7 @@ class GDPORewardManager(RewardManagerBase):
                 solution_str=response_str,
                 ground_truth=ground_truth,
                 extra_info=extra_info,
+                validate=is_validate,
                 **extra_reward_kwargs,
             )
         else:
@@ -82,6 +84,7 @@ class GDPORewardManager(RewardManagerBase):
                     solution_str=response_str,
                     ground_truth=ground_truth,
                     extra_info=extra_info,
+                    validate=is_validate,
                     **extra_reward_kwargs,
                 ),
             )

@@ -4,7 +4,7 @@
 [ -f ".env" ] && set -a && . .env && set +a
 
 # configurable experiment 
-EXP_NAME="baseline_GRPO"
+EXP_NAME="baseline_GRPO_qwen2.5-7b_oss-120b"
 PROJECT_NAME="rubrichub_v1_Medical"
 
 # configurable parameters
@@ -22,6 +22,8 @@ MAX_NUM_BATCHED_TOKENS=$((MAX_TOKENS * 1))
 
 #############################
 set -x
+
+VAL_ONLY=${VAL_ONLY:-False}
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -47,6 +49,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
     actor_rollout_ref.model.use_remove_padding=True \
+    actor_rollout_ref.actor.fsdp_config.model_dtype=${MODEL_DTYPE} \
     actor_rollout_ref.actor.use_dynamic_bsz=${USE_DYNAMIC_BSZ} \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${ACTOR_PPO_MAX_TOKEN_LEN} \
     actor_rollout_ref.actor.ppo_mini_batch_size=${PPO_MINI_BATCH_SIZE} \
@@ -72,15 +75,16 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.temperature=1.0 \
     actor_rollout_ref.rollout.top_p=1.0 \
     actor_rollout_ref.rollout.top_k=-1 \
-    actor_rollout_ref.rollout.val_kwargs.temperature=1.0 \
+    actor_rollout_ref.rollout.val_kwargs.temperature=0 \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.7 \
     actor_rollout_ref.rollout.val_kwargs.top_k=-1 \
     actor_rollout_ref.rollout.val_kwargs.n=1 \
-    actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=${USE_DYNAMIC_BSZ} \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${INFER_PPO_MAX_TOKEN_LEN} \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=${USE_DYNAMIC_BSZ} \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${INFER_PPO_MAX_TOKEN_LEN} \
+    actor_rollout_ref.ref.fsdp_config.model_dtype=${MODEL_DTYPE} \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
     trainer.critic_warmup=0 \
@@ -92,5 +96,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.n_gpus_per_node=${NUM_GPUS} \
     trainer.nnodes=1 \
     trainer.save_freq=10 \
-    trainer.test_freq=10 \
+    trainer.test_freq=5 \
+    trainer.val_only=${VAL_ONLY} \
     trainer.total_epochs=15 $@

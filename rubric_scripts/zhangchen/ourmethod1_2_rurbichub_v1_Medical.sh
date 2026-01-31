@@ -68,6 +68,8 @@ ppo_mini_batch_size=32
 #############################
 set -x
 
+VAL_ONLY=${VAL_ONLY:-False}
+
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo_v1_2 \
     data.train_files=data/RubricHub_v1/RuRL/RubricHub_v1/RuRL/rurbichub_v1_Medical.parquet \
@@ -114,11 +116,11 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.temperature=1.0 \
     actor_rollout_ref.rollout.top_p=1.0 \
     actor_rollout_ref.rollout.top_k=-1 \
-    actor_rollout_ref.rollout.val_kwargs.temperature=0.7 \
+    actor_rollout_ref.rollout.val_kwargs.temperature=0 \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.8 \
     actor_rollout_ref.rollout.val_kwargs.top_k=20 \
     actor_rollout_ref.rollout.val_kwargs.n=1 \
-    actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
@@ -147,4 +149,5 @@ python3 -m verl.trainer.main_ppo \
     +ray_kwargs.ray_init.runtime_env.env_vars.ATTRIBUTION_VLLM_TEMPERATURE="\"${ATTRIBUTION_VLLM_TEMPERATURE}\"" \
     trainer.save_freq=10 \
     trainer.test_freq=5 \
+    trainer.val_only=${VAL_ONLY} \
     trainer.total_epochs=15 $@

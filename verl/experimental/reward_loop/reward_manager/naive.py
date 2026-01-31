@@ -42,6 +42,7 @@ class NaiveRewardManager(RewardManagerBase):
         data_source = data_item.non_tensor_batch["data_source"]
         ground_truth = data_item.non_tensor_batch["reward_model"]["ground_truth"]
         extra_info = data_item.non_tensor_batch.get("extra_info", {})
+        is_validate = bool(getattr(data_item, "meta_info", {}).get("validate", False))
         tool_extra_fields = data_item.non_tensor_batch.get("tool_extra_fields", None)
         if tool_extra_fields is not None:
             extra_info.update(tool_extra_fields.items())
@@ -69,6 +70,7 @@ class NaiveRewardManager(RewardManagerBase):
                 solution_str=response_str,
                 ground_truth=ground_truth,
                 extra_info=extra_info,
+                validate=is_validate,
                 **extra_reward_kwargs,
             )
         else:
@@ -79,6 +81,7 @@ class NaiveRewardManager(RewardManagerBase):
                     solution_str=response_str,
                     ground_truth=ground_truth,
                     extra_info=extra_info,
+                    validate=is_validate,
                     **extra_reward_kwargs,
                 ),
             )

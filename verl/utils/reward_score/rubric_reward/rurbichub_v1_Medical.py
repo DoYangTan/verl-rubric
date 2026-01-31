@@ -98,11 +98,14 @@ class AsyncVLLMSampler:
         self.virtual_loads[selected_url] += 1
         return selected_url
 
-    async def __call__(self, message_list: List[Dict[str, str]]) -> SamplerResponse:
-        try:
-            temperature = float(os.getenv("VLLM_TEMPERATURE", "1.0"))
-        except (TypeError, ValueError):
-            temperature = 1.0
+    async def __call__(
+        self, message_list: List[Dict[str, str]], *, temperature: float | None = None
+    ) -> SamplerResponse:
+        if temperature is None:
+            try:
+                temperature = float(os.getenv("VLLM_TEMPERATURE", "1.0"))
+            except (TypeError, ValueError):
+                temperature = 1.0
         payload = {
             "model": self.model,
             "messages": message_list,
@@ -281,7 +284,9 @@ async def async_grade_single_example(
     prompt: List[Dict[str, str]], 
     response: str,
     rubric_items: List[RubricItem],
-    grader_model
+    grader_model,
+    *,
+    grader_temperature: float | None = None,
 ) -> float:
     """Async scoring: Rule Check + Async LLM Grading"""
     grading_response_list = [None] * len(rubric_items)
@@ -317,7 +322,10 @@ async def async_grade_single_example(
         prompt_text = _build_batch_grader_prompt(prompt, response, llm_items)
         
         # Async call to grader
-        sampler_response = await grader_model([{"role": "user", "content": prompt_text}])
+        sampler_response = await grader_model(
+            [{"role": "user", "content": prompt_text}],
+            temperature=grader_temperature,
+        )
         llm_results = _parse_presence_response(sampler_response.response_text, len(llm_items))
         
         for local_idx, global_idx in enumerate(llm_indices):
@@ -333,6 +341,7 @@ async def compute_score(
 ) -> float:
     try:
         extra_info = kwargs.get("extra_info")
+        is_validate = bool(kwargs.get("validate", False))
         rm_data = extra_info.get("reward_model") if isinstance(extra_info, dict) else None
         
         rubrics = rm_data.get("rubrics", []) or rm_data.get("Rubric", [])
@@ -345,12 +354,26 @@ async def compute_score(
         
         if not input_prompt:
             return 0.0
+
+        def _env_float(key: str, default: float) -> float:
+            val = os.getenv(key)
+            if val is None or str(val).strip() == "":
+                return default
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return default
+
+        train_temp = _env_float("VLLM_TEMPERATURE", 1.0)
+        val_temp = _env_float("VLLM_TEMPERATURE_VAL", train_temp)
+        grader_temperature = val_temp if is_validate else train_temp
         
         score = await async_grade_single_example(
             input_prompt, 
             solution_str, 
             rubric_items, 
-            grader
+            grader,
+            grader_temperature=grader_temperature,
         )
         return float(score)
     

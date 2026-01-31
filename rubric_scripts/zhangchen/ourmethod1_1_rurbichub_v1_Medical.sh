@@ -11,6 +11,9 @@ MAX_TOKENS=$((MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))
 
 #############################
 set -x
+
+VAL_ONLY=${VAL_ONLY:-False}
+
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo_v1_1 \
     data.train_files="${TRAIN_FILE}" \
@@ -33,6 +36,8 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.n=${ROLLOUT_N} \
     actor_rollout_ref.rollout.max_model_len=${MAX_TOKENS} \
     actor_rollout_ref.rollout.gpu_memory_utilization=${GPU_MEMORY_UTILIZATION} \
+    actor_rollout_ref.rollout.val_kwargs.temperature=0 \
+    actor_rollout_ref.rollout.val_kwargs.do_sample=False \
     trainer.project_name="${PROJECT_NAME}" \
     trainer.experiment_name="${EXP_NAME}" \
     trainer.n_gpus_per_node=${NUM_GPUS} \
@@ -40,5 +45,5 @@ python3 -m verl.trainer.main_ppo \
     trainer.resume_mode=disable \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
+    trainer.val_only=${VAL_ONLY} \
     trainer.total_epochs=15 $@
-
